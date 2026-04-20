@@ -1,0 +1,75 @@
+import { httpsCallable } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-functions.js";
+import { db } from '../auth.js';
+import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+import { currentUser } from '../app.js';
+
+export async function pushPayouts(data, config, context) {
+    const pushQboEntity = httpsCallable(config.functions, 'pushQboEntity');
+
+    let pushedIds = [];
+    let rejected = [];
+
+    const totalLines = data.length;
+    const totalTxns = data.length;
+    let txnsPushed = 0;
+    let linesPushed = 0;
+    const typeName = "payout";
+
+    for (const t of data) {
+        if (!t.category) throw new Error("Missing category mapping in Payouts.");
+        
+        const vendorName = `${t.marketplace || 'Amazon'} Vendor`;
+        
+        const txnDate = context.getAmazonDateStr(t['date/time']);
+        const exactTimeMs = t['date/time'] ? new Date(t['date/time']).getTime() : Date.now();
+        
+        const amt = Math.abs(parseFloat(t.total || 0));
+
+        const signature = `PAYOUT_${exactTimeMs}_${t['settlement id']}_${amt.toFixed(2)}`;
+        const ledgerRef = doc(db, "users", currentUser.uid, "qbo_sync_ledger", signature);
+        const ledgerSnap = await getDoc(ledgerRef);
+        
+        if (ledgerSnap.exists()) {
+            rejected.push(t);
+            txnsPushed++;
+            linesPushed++;
+            if (context && context.updatePushProgress) context.updatePushProgress(linesPushed, txnsPushed, totalLines, totalTxns, typeName);
+            continue; 
+        }
+
+        const payload = {
+            "entityType": "Purchase",
+            "realmId": config.realmId,
+            "data": {
+                "TxnDate": txnDate,
+                "PaymentType": "Cash",
+                "AccountRef": { "name": config.depositAccountName }, 
+                "EntityRef": { "name": vendorName },
+                "PrivateNote": `Transfer ID: ${t['settlement id'] || 'N/A'}`,
+                "Line": [
+                    {
+                        "Amount": amt,
+                        "DetailType": "AccountBasedExpenseLineDetail",
+                        "AccountBasedExpenseLineDetail": {
+                            "AccountRef": { "name": t.category } 
+                        },
+                        "Description": t.lineItem
+                    }
+                ]
+            }
+        };
+
+        const res = await pushQboEntity(payload);
+        await setDoc(ledgerRef, { batchId: config.batchId, qboId: res.data.qboResponseId, timestamp: new Date().toISOString() });
+        pushedIds.push({ type: "Purchase", id: res.data.qboResponseId });
+
+        txnsPushed++;
+        linesPushed++;
+        if (context && context.updatePushProgress) {
+            context.updatePushProgress(linesPushed, txnsPushed, totalLines, totalTxns, typeName);
+        }
+    }
+
+    if (rejected.length > 0) context.showRejectionModal(rejected);
+    return pushedIds;
+}
