@@ -113,7 +113,7 @@ function renderQboHeader() {
 
 function initiateQboAuth() {
     const intuitAuthUrl = "https://appcenter.intuit.com/connect/oauth2";
-    const clientId = "AB3UQmsMlQg0m6pcEGK9yDVOPISy6iyHiLVBiTVAnLqzMPrSXv"; 
+    const clientId = "AB7QYE8V27HFW4cCTIt7DsJWcTf9HFJoeLmW875gjPKwPWBvPQ"; 
     const redirectUri = window.location.origin + window.location.pathname; 
     const scope = "com.intuit.quickbooks.accounting";
     const state = "security_token_" + Math.random().toString(36).substring(7);
