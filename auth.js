@@ -4,13 +4,13 @@ import { getAuth, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/
 import { getFunctions } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-functions.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyD982CXdXF_hj0C8BlD5nc1CDVWj6oYg3A",
-  authDomain: "vilsync-to-qbo.firebaseapp.com",
-  projectId: "vilsync-to-qbo",
-  storageBucket: "vilsync-to-qbo.firebasestorage.app",
-  messagingSenderId: "385067886379",
-  appId: "1:385067886379:web:2ce4d922b3ffe2ff2d076e",
-  measurementId: "G-04R1T85DDK"
+  apiKey: "AIzaSyC_reVQpx1F0QnynRCPFj0T1btKAoZLkK4",
+  authDomain: "excel-transaction-importer.firebaseapp.com",
+  projectId: "excel-transaction-importer",
+  storageBucket: "excel-transaction-importer.firebasestorage.app",
+  messagingSenderId: "1080856597867",
+  appId: "1:1080856597867:web:767356c09bb243d44ca82e",
+  measurementId: "G-6PZ1KPJDGX"
 };
 
 const app = initializeApp(firebaseConfig);
