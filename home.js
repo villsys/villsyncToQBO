@@ -202,7 +202,7 @@ export default class Home {
 
         // --- UPDATED SUPER ADMIN EMAIL ---
         this.userRole = 'guest'; 
-        if (currentUser.email === 'vyllsys@gmail.com') {
+        if (currentUser.email === 'vnvcpas.excelimporter@gmail.com') {
             this.userRole = 'super_admin';
         } else {
             try {
