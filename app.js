@@ -34,25 +34,36 @@ const routes = {
 };
 
 async function router() {
-    let hash = window.location.hash || '#/';
-    
-    // Update sidebar active state
-    document.querySelectorAll('.sidebar-link').forEach(link => {
-        link.classList.remove('active');
-        if (link.dataset.route === hash) link.classList.add('active');
-    });
+let hash = window.location.hash || '#/';
 
-    const loadView = routes[hash] || routes['#/'];
-    
-    try {
-        const ViewComponent = await loadView();
-        const viewInstance = new ViewComponent();
-        appRoot.innerHTML = await viewInstance.render();
-        await viewInstance.afterRender();
-    } catch (error) {
-        console.error("Routing Error:", error);
-        appRoot.innerHTML = `<div class="container"><h2>Module Load Error</h2></div>`;
-    }
+// Update sidebar active state
+document.querySelectorAll(&#39;.sidebar-link&#39;).forEach(link =&gt; {
+    link.classList.remove(&#39;active&#39;);
+    if (link.dataset.route === hash) link.classList.add(&#39;active&#39;);
+});
+
+// Prevent loading protected modules if the user is not logged in
+if (typeof currentUser === &#39;undefined&#39; || !currentUser) {
+    appRoot.innerHTML = `
+        &lt;div style=&quot;padding: 60px 20px; text-align: center; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin: 20px;&quot;&gt;
+            &lt;h2 style=&quot;color: #2c3e50; margin-bottom: 15px;&quot;&gt;Welcome to VilSync To QBO&lt;/h2&gt;
+            &lt;p style=&quot;color: #6c757d; font-size: 1.1em;&quot;&gt;Please click &quot;Admin Login&quot; in the top right to access your integration modules and connect to QuickBooks.&lt;/p&gt;
+        &lt;/div&gt;
+    `;
+    return; 
+}
+
+const loadView = routes[hash] || routes[&#39;#/&#39;];
+
+try {
+    const ViewComponent = await loadView();
+    const viewInstance = new ViewComponent();
+    appRoot.innerHTML = await viewInstance.render();
+    await viewInstance.afterRender();
+} catch (error) {
+    console.error(&quot;Routing Error:&quot;, error);
+    appRoot.innerHTML = `&lt;div class=&quot;container&quot;&gt;&lt;h2&gt;Module Load Error&lt;/h2&gt;&lt;/div&gt;`;
+}
 }
 
 async function fetchQboConnections() {
