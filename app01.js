@@ -165,4 +165,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentUser) signOut(auth);
         else signInWithPopup(auth, provider);
     });
+
+    // Inject Legal Footer
+    const legalFooter = document.createElement('div');
+    legalFooter.innerHTML = `
+        <div style="text-align: center; padding: 15px 10px; font-size: 0.8rem; color: #7f8c8d; border-top: 1px solid #eee; margin-top: auto;">
+            <a href="privacy.html" target="_blank" style="color: #3498db; text-decoration: none; margin-right: 10px;">Privacy Policy</a> | 
+            <a href="terms.html" target="_blank" style="color: #3498db; text-decoration: none; margin-left: 10px;">Terms of Service</a>
+            <div style="margin-top: 8px;">&copy; ${new Date().getFullYear()} Joselito Villarta, CPA, MBA</div>
+        </div>
+    `;
+
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar) {
+        sidebar.style.display = 'flex';
+        sidebar.style.flexDirection = 'column';
+        sidebar.appendChild(legalFooter);
+    } else {
+        document.body.appendChild(legalFooter);
+    }
 });
