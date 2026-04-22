@@ -26,6 +26,12 @@ export default class Home {
         this.userProfile = null;
     }
 
+    // Helper to completely strip commas and parse floats
+    parseAmt(val) {
+        if (val === undefined || val === null) return 0;
+        return parseFloat(String(val).replace(/,/g, '')) || 0;
+    }
+
     getAmazonDateStr(dateStr) {
         if (!dateStr) return new Date().toISOString().split('T')[0];
         const d = new Date(dateStr);
@@ -200,7 +206,6 @@ export default class Home {
             return;
         }
 
-        // --- UPDATED SUPER ADMIN EMAIL ---
         this.userRole = 'guest'; 
         if (currentUser.email === 'vnvcpas.excelimporter@gmail.com') {
             this.userRole = 'super_admin';
@@ -477,13 +482,13 @@ export default class Home {
         } else if (this.activeMainTab === 'expenses') {
             data = data.filter(t => {
                 const isOrderFee = (t.type.toLowerCase() === 'order' && t.groupClass === 'fee');
-                const isGeneralExpense = (t.type.toLowerCase() !== 'order' && t.type.toLowerCase() !== 'refund' && t.type.toLowerCase() !== 'transfer' && parseFloat(t.total) < 0);
+                const isGeneralExpense = (t.type.toLowerCase() !== 'order' && t.type.toLowerCase() !== 'refund' && t.type.toLowerCase() !== 'transfer' && this.parseAmt(t.total) < 0);
                 return isOrderFee || isGeneralExpense;
             });
         } else if (this.activeMainTab === 'deposits') {
             data = data.filter(t => {
                 const isRefundFee = (t.type.toLowerCase() === 'refund' && t.groupClass === 'fee');
-                const isGeneralDeposit = (t.type.toLowerCase() !== 'order' && t.type.toLowerCase() !== 'refund' && t.type.toLowerCase() !== 'transfer' && parseFloat(t.total) >= 0);
+                const isGeneralDeposit = (t.type.toLowerCase() !== 'order' && t.type.toLowerCase() !== 'refund' && t.type.toLowerCase() !== 'transfer' && this.parseAmt(t.total) >= 0);
                 return isRefundFee || isGeneralDeposit;
             });
         } else if (this.activeMainTab === 'payouts') {
@@ -502,8 +507,9 @@ export default class Home {
         const qboSelect = document.getElementById('qboSelect');
         if (!qboSelect || !qboSelect.value) return this.showAlert("Please connect and select a QBO account first.", "warning");
 
-        const visibleData = this.getFilteredAndPartitionedData();
-        if (visibleData.length === 0) return this.showAlert("No transactions in the current view to push.", "warning");
+        // ONLY PROCESS UNCHECKED ROWS
+        const visibleData = this.getFilteredAndPartitionedData().filter(t => !t.selected);
+        if (visibleData.length === 0) return this.showAlert("No unchecked transactions in the current view to push.", "warning");
 
         const pushBtn = document.getElementById('syncQboBtn');
         const statusText = document.getElementById('pushStatusText');
@@ -609,7 +615,7 @@ export default class Home {
 
             for (const t of visibleData) {
                 if (!t.category) throw new Error("Missing Categories: Please map all payout line items.");
-                const amt = parseFloat(t.total || 0);
+                const amt = this.parseAmt(t.total);
                 if (amt === 0) continue;
 
                 const catResponse = await getOrCreateQboAccount({ accountName: t.category, realmId: config.realmId });
@@ -628,6 +634,11 @@ export default class Home {
                 const res = await pushJournalEntry({ realmId: config.realmId, lines: individualLines, txnDate: tDate, privateNote: `VilBooks Transfer ID: ${t['settlement id'] || 'Manual'}` });
                 pushedIds.push({ type: "JournalEntry", id: res.data.qboResponseId });
                 
+                // Write signature to prevent duplicates later
+                const exactTimeMs = t['date/time'] ? new Date(t['date/time']).getTime() : Date.now();
+                const signature = `PAYOUT_${exactTimeMs}_${t['settlement id']}_${Math.abs(amt).toFixed(2)}`;
+                await setDoc(doc(db, "users", currentUser.uid, "qbo_sync_ledger", signature), { batchId: config.batchId, qboId: res.data.qboResponseId, timestamp: new Date().toISOString() });
+                
                 txnsPushed++;
                 linesPushed++;
                 this.updatePushProgress(linesPushed, txnsPushed, totalLines, totalTxns, 'payout');
@@ -640,7 +651,7 @@ export default class Home {
 
             visibleData.forEach(t => {
                 if (!t.category) missingCats = true;
-                const amt = parseFloat(t.total || 0);
+                const amt = this.parseAmt(t.total);
                 const key = t.lineItem || "UNCATEGORIZED"; 
                 if (!summary[key]) summary[key] = { amt: 0, catName: t.category };
                 summary[key].amt += amt;
@@ -676,6 +687,27 @@ export default class Home {
                 this.showAlert(`Success! ${this.activeMainTab.toUpperCase()} Summary Journal Entry created in QBO.`, "success");
                 pushedIds.push({ type: "JournalEntry", id: response.data.qboResponseId });
                 this.updatePushProgress(visibleData.length, 1, visibleData.length, 1, 'journal entry');
+                
+                // --- WRITE INDIVIDUAL SIGNATURES FOR THE JOURNAL ENTRY ---
+                // This ensures that future uploads will detect these lines as duplicates
+                const groups = {};
+                visibleData.forEach(t => {
+                    const oId = t['order id'] || t.uid;
+                    const dateStamp = t['date/time'] || 'nodate';
+                    const settlementId = t['settlement id'] || 'nosettlement';
+                    const groupKey = `${oId}_${dateStamp}_${settlementId}`;
+                    if (!groups[groupKey]) groups[groupKey] = { date: t['date/time'], settlementId: t['settlement id'], lines: [] };
+                    groups[groupKey].lines.push(t);
+                });
+                
+                for (const groupData of Object.values(groups)) {
+                    const exactTimeMs = groupData.date ? new Date(groupData.date).getTime() : Date.now();
+                    let grpAmt = 0;
+                    groupData.lines.forEach(l => grpAmt += Math.abs(this.parseAmt(l.total)));
+                    let prefix = { 'sales': "SALES", 'refunds': "REFUND", 'expenses': "EXP", 'deposits': "DEP" }[this.activeMainTab] || "JRNL";
+                    const signature = `${prefix}_${exactTimeMs}_${groupData.settlementId}_${grpAmt.toFixed(2)}`;
+                    await setDoc(doc(db, "users", currentUser.uid, "qbo_sync_ledger", signature), { batchId: config.batchId, qboId: response.data.qboResponseId, timestamp: new Date().toISOString() });
+                }
             }
         }
         return pushedIds;
@@ -776,53 +808,6 @@ export default class Home {
     hideAlert() {
         document.getElementById('alertBox').className = "alert";
     }
-    
-    showRejectionModal(rejectedData) {
-        const modal = document.getElementById('rejectionModal');
-        const container = document.getElementById('rejectionTableContainer');
-        const downloadBtn = document.getElementById('downloadRejectsBtn');
-        
-        let html = `
-            <div class="table-responsive" style="max-height: 400px; border: 1px solid #ccc;">
-            <table style="width: 100%; border-collapse: collapse;">
-                <thead style="background: #f8f9fa; position: sticky; top: 0;">
-                    <tr>
-                        <th style="padding: 8px; border-bottom: 1px solid #ddd; text-align: left;">Date</th>
-                        <th style="padding: 8px; border-bottom: 1px solid #ddd; text-align: left;">Type</th>
-                        <th style="padding: 8px; border-bottom: 1px solid #ddd; text-align: left;">Settlement ID</th>
-                        <th style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">Amount</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-        
-        rejectedData.forEach(t => {
-            html += `<tr>
-                <td style="padding: 8px; border-bottom: 1px solid #eee;">${t['date/time'] || ''}</td>
-                <td style="padding: 8px; border-bottom: 1px solid #eee;">${t['type'] || ''}</td>
-                <td style="padding: 8px; border-bottom: 1px solid #eee;">${t['settlement id'] || ''}</td>
-                <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${parseFloat(t.total).toFixed(2)}</td>
-            </tr>`;
-        });
-        
-        html += `</tbody></table></div>`;
-        container.innerHTML = html;
-        
-        downloadBtn.onclick = () => {
-            const csv = Papa.unparse(rejectedData);
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            const url = URL.createObjectURL(blob);
-            link.setAttribute("href", url);
-            link.setAttribute("download", `rejected_duplicates_${Date.now()}.csv`);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        };
-
-        modal.style.display = 'flex';
-    }
 
     async handleFileSelect(e) {
         this.hideAlert();
@@ -852,12 +837,12 @@ export default class Home {
             skipEmptyLines: true,
             complete: async (results) => {
                 await this.logFileRecord(file);
-                this.parseData(results.data, true);
+                await this.parseData(results.data, true);
             }
         });
     }
 
-    parseData(data, isNew) {
+    async parseData(data, isNew) {
         const isGuest = !this.userProfile || this.userProfile.role === 'guest';
         if (isGuest && data.length > 10) {
             data = data.slice(0, 10);
@@ -884,7 +869,7 @@ export default class Home {
                 const prefix = typeStr; 
 
                 receiptColumns.forEach(colName => {
-                    const amt = parseFloat(row[colName] || 0);
+                    const amt = this.parseAmt(row[colName]);
                     if (amt !== 0) {
                         const lineItemName = `${prefix} ${colName}`;
                         expandedTransactions.push({
@@ -903,7 +888,7 @@ export default class Home {
                 });
 
                 feeColumns.forEach(colName => {
-                    const amt = parseFloat(row[colName] || 0);
+                    const amt = this.parseAmt(row[colName]);
                     if (amt !== 0) {
                         const lineItemName = `${prefix} ${colName}`;
                         expandedTransactions.push({
@@ -928,7 +913,7 @@ export default class Home {
                     if (commaIndex !== -1) lineItem = lineItem.substring(0, commaIndex).trim();
                 }
 
-                const amt = parseFloat(row['total'] || 0);
+                const amt = this.parseAmt(row['total']);
                 if (amt !== 0 || typeStr !== "") {
                     expandedTransactions.push({
                         ...row,
@@ -949,7 +934,84 @@ export default class Home {
         this.transactions = expandedTransactions;
         document.getElementById('syncQboBtn').disabled = false;
         
+        // Check for duplicates before rendering
+        await this.checkForDuplicates();
         this.renderActiveView();
+    }
+
+    async checkForDuplicates() {
+        if (!currentUser) return;
+        
+        try {
+            const ledgerSnap = await getDocs(collection(db, "users", currentUser.uid, "qbo_sync_ledger"));
+            const existingSigs = new Set();
+            ledgerSnap.forEach(d => existingSigs.add(d.id));
+
+            let duplicateCount = 0;
+            const groups = { sales: {}, refunds: {}, expenses: {}, deposits: {}, payouts: {} };
+
+            // Group all parsed transactions to build signatures
+            this.transactions.forEach(t => {
+                const oId = t['order id'] || t.uid;
+                const dateStamp = t['date/time'] || 'nodate';
+                const settlementId = t['settlement id'] || 'nosettlement';
+                const groupKey = `${oId}_${dateStamp}_${settlementId}`;
+                const typeLower = (t.type || "").toLowerCase();
+                const amt = this.parseAmt(t.total);
+
+                let mainTab = null;
+                if (typeLower === 'order' && t.groupClass === 'receipt') mainTab = 'sales';
+                else if (typeLower === 'refund' && t.groupClass === 'receipt') mainTab = 'refunds';
+                else if ((typeLower === 'order' && t.groupClass === 'fee') || (typeLower !== 'order' && typeLower !== 'refund' && typeLower !== 'transfer' && amt < 0)) mainTab = 'expenses';
+                else if ((typeLower === 'refund' && t.groupClass === 'fee') || (typeLower !== 'order' && typeLower !== 'refund' && typeLower !== 'transfer' && amt >= 0)) mainTab = 'deposits';
+                else if (typeLower === 'transfer') mainTab = 'payouts';
+
+                if (mainTab) {
+                    if (!groups[mainTab][groupKey]) groups[mainTab][groupKey] = { date: t['date/time'], settlementId: t['settlement id'], lines: [] };
+                    groups[mainTab][groupKey].lines.push(t);
+                }
+            });
+
+            // Compare signatures
+            for (const [tab, tabGroups] of Object.entries(groups)) {
+                if (tab === 'payouts') {
+                    for (const groupData of Object.values(tabGroups)) {
+                        groupData.lines.forEach(t => {
+                            const exactTimeMs = t['date/time'] ? new Date(t['date/time']).getTime() : Date.now();
+                            const amt = Math.abs(this.parseAmt(t.total));
+                            const signature = `PAYOUT_${exactTimeMs}_${t['settlement id']}_${amt.toFixed(2)}`;
+                            if (existingSigs.has(signature)) {
+                                t.selected = true;
+                                duplicateCount++;
+                            }
+                        });
+                    }
+                } else {
+                    for (const groupData of Object.values(tabGroups)) {
+                        const exactTimeMs = groupData.date ? new Date(groupData.date).getTime() : Date.now();
+                        let netAmount = 0;
+                        groupData.lines.forEach(l => netAmount += Math.abs(this.parseAmt(l.total)));
+
+                        let prefix = { 'sales': "SALES", 'refunds': "REFUND", 'expenses': "EXP", 'deposits': "DEP" }[tab];
+                        const signature = `${prefix}_${exactTimeMs}_${groupData.settlementId}_${netAmount.toFixed(2)}`;
+
+                        if (existingSigs.has(signature)) {
+                            groupData.lines.forEach(l => {
+                                l.selected = true;
+                                duplicateCount++;
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (duplicateCount > 0) {
+                this.showAlert(`<strong>Heads up!</strong> ${duplicateCount} duplicate transactions found and automatically checked. Please review them. Only unchecked transactions will be pushed to QBO.`, "warning");
+            }
+
+        } catch (error) {
+            console.error("Duplicate check failed:", error);
+        }
     }
 
     async logFileRecord(file) {
@@ -992,6 +1054,7 @@ export default class Home {
         let html = `
             <div style="margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center;">
                 <button class="btn danger" onclick="window.deleteSelected()">Delete Selected Rows</button>
+                <span style="font-size:0.9rem; color:#d35400; font-weight:bold;">⚠️ Checked rows are ignored and will NOT be pushed to QBO.</span>
                 <span style="font-size:0.9rem; color:#666;">Showing ${currentData.length} rows</span>
             </div>
             <div class="table-responsive">
@@ -1028,7 +1091,7 @@ export default class Home {
                 <td><span style="font-size: 0.8rem; color: #555;">${t.description || ''}</span></td>
                 <td>${t['sku'] || ''}</td>
                 <td style="text-align: right;">${t.quantity || 1}</td>
-                <td style="text-align: right; font-weight: bold;">${parseFloat(t.total).toFixed(2)}</td>
+                <td style="text-align: right; font-weight: bold;">${parseFloat(t.total || 0).toFixed(2)}</td>
                 <td>${t['date/time'] || ''}</td>
                 <td>${t['settlement id'] || ''}</td>
                 <td>${t['order id'] || ''}</td>
@@ -1202,7 +1265,7 @@ export default class Home {
             `;
 
             currentData.forEach(t => {
-                const amt = parseFloat(t.total || 0);
+                const amt = this.parseAmt(t.total);
                 if (amt === 0) return;
 
                 const tDate = t['date/time'] ? this.getAmazonDateStr(t['date/time']) : 'Unknown Date';
@@ -1228,7 +1291,7 @@ export default class Home {
             let netDeposit = 0;
 
             currentData.forEach(t => {
-                const amt = parseFloat(t.total || 0);
+                const amt = this.parseAmt(t.total);
                 const key = t.lineItem || "UNCATEGORIZED"; 
                 if (!summary[key]) summary[key] = { amt: 0, catName: t.category || `<span class="text-danger">Missing</span>` };
                 summary[key].amt += amt;
