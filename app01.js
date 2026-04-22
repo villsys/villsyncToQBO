@@ -113,7 +113,7 @@ function renderQboHeader() {
 
 function initiateQboAuth() {
     const intuitAuthUrl = "https://appcenter.intuit.com/connect/oauth2";
-    const clientId = "AB3UQmsMlQg0m6pcEGK9yDVOPISy6iyHiLVBiTVAnLqzMPrSXv"; 
+    const clientId = "AB7QYE8V27HFW4cCTIt7DsJWcTf9HFJoeLmW875gjPKwPWBvPQ"; 
     const redirectUri = window.location.origin + window.location.pathname; 
     const scope = "com.intuit.quickbooks.accounting";
     const state = "security_token_" + Math.random().toString(36).substring(7);
@@ -168,11 +168,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Inject Legal Footer
     const legalFooter = document.createElement('div');
+    legalFooter.style.marginTop = 'auto'; // Ensures it sticks to the bottom
     legalFooter.innerHTML = `
-        <div style="text-align: center; padding: 15px 10px; font-size: 0.8rem; color: #7f8c8d; border-top: 1px solid #eee; margin-top: auto;">
-            <a href="privacy.html" target="_blank" style="color: #3498db; text-decoration: none; margin-right: 10px;">Privacy Policy</a> | 
-            <a href="terms.html" target="_blank" style="color: #3498db; text-decoration: none; margin-left: 10px;">Terms of Service</a>
-            <div style="margin-top: 8px;">&copy; ${new Date().getFullYear()} Joselito Villarta, CPA, MBA</div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px 10px; font-size: 0.85rem; color: #7f8c8d; border-top: 1px solid #eee;">
+            <a href="privacy.html" target="_blank" style="color: #3498db; text-decoration: none;">Privacy Policy</a>
+            <a href="terms.html" target="_blank" style="color: #3498db; text-decoration: none;">Terms of Service</a>
+            <a href="mailto:vnvcpas.excelimporter@gmail.com" style="color: #3498db; text-decoration: none;">Contact Support</a>
+            <div style="margin-top: 10px; font-size: 0.75rem; color: #bdc3c7; border-top: 1px solid #f9f9f9; padding-top: 10px; width: 100%; text-align: center;">
+                &copy; ${new Date().getFullYear()} Joselito Villarta, CPA, MBA
+            </div>
         </div>
     `;
 
