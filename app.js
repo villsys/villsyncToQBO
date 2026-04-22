@@ -8,6 +8,9 @@ const authBtn = document.getElementById('authBtn');
 export let currentUser = null;
 export let activeQboConnections = [];
 
+// NEW: Flag to prevent the router from painting the screen before Firebase checks the cookie
+let authInitialized = false; 
+
 // Helper component for modules under construction
 class UnderDevelopmentView {
     constructor(title) { this.title = title; }
@@ -34,6 +37,9 @@ const routes = {
 };
 
 async function router() {
+    // Wait until Firebase confirms the login status before routing
+    if (!authInitialized) return; 
+
     let hash = window.location.hash || '#/';
     
     // Update sidebar active state
@@ -179,11 +185,15 @@ window.addEventListener('hashchange', router);
 
 document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('code')) handleOauthCallback();
-    else router();
+    if (urlParams.get('code')) {
+        handleOauthCallback();
+    }
+    // Note: The immediate router() call was removed here so we don't flash the login screen.
 
     onAuthStateChanged(auth, user => {
         currentUser = user;
+        authInitialized = true; // Firebase has made its decision
+
         if (user) {
             const initial = user.displayName ? user.displayName.charAt(0) : (user.email ? user.email.charAt(0) : 'U');
             authBtn.innerText = initial.toUpperCase();
@@ -195,6 +205,9 @@ document.addEventListener('DOMContentLoaded', () => {
             activeQboConnections = [];
             renderQboHeader();
         }
+        
+        // Trigger the router now that we accurately know the user's status
+        router();
     });
 
     authBtn.addEventListener('click', () => {
