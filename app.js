@@ -47,7 +47,7 @@ async function router() {
         appRoot.innerHTML = `
             <div style="padding: 60px 20px; text-align: center; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin: 20px;">
                 <h2 style="color: #2c3e50; margin-bottom: 15px;">Welcome to VilSync To QBO</h2>
-                <p style="color: #6c757d; font-size: 1.1em;">Please click "Admin Login" in the top right to access your integration modules and connect to QuickBooks.</p>
+                <p style="color: #6c757d; font-size: 1.1em;">Please click "Login" in the top right to access your integration modules and connect to QuickBooks.</p>
             </div>
         `;
         return; 
@@ -85,20 +85,23 @@ async function fetchQboConnections() {
 
 function renderQboHeader() {
     const container = document.getElementById('qbo-container');
+    const nameDisplay = document.getElementById('qbo-name-display');
     if (!container) return;
 
     if (!currentUser) {
         container.innerHTML = '';
+        if (nameDisplay) nameDisplay.innerText = '';
         return;
     }
 
     if (activeQboConnections.length === 0) {
         container.innerHTML = `<button id="connectQboBtn" class="btn qbo-btn">Connect to QuickBooks</button>`;
+        if (nameDisplay) nameDisplay.innerText = '';
         document.getElementById('connectQboBtn').addEventListener('click', initiateQboAuth);
     } else {
         let optionsHtml = '';
         activeQboConnections.forEach(conn => {
-            optionsHtml += `<option value="${conn.realmId}">${conn.companyName}</option>`;
+            optionsHtml += `<option value="${conn.realmId}">${conn.realmId}</option>`;
         });
 
         container.innerHTML = `
@@ -107,6 +110,15 @@ function renderQboHeader() {
             </select>
             <button id="connectNewQboBtn" class="btn qbo-btn outline-qbo">+ Add QBO</button>
         `;
+
+        const qboSelect = document.getElementById('qboSelect');
+        const updateNameDisplay = () => {
+            const selectedConn = activeQboConnections.find(c => c.realmId === qboSelect.value);
+            if (nameDisplay && selectedConn) nameDisplay.innerText = selectedConn.companyName;
+        };
+        qboSelect.addEventListener('change', updateNameDisplay);
+        updateNameDisplay(); 
+
         document.getElementById('connectNewQboBtn').addEventListener('click', initiateQboAuth);
     }
 }
@@ -153,9 +165,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     onAuthStateChanged(auth, user => {
         currentUser = user;
-        authBtn.innerText = user ? "Logout" : "Admin Login";
-        if (user) fetchQboConnections(); 
-        else {
+        if (user) {
+            const initial = user.displayName ? user.displayName.charAt(0) : (user.email ? user.email.charAt(0) : 'U');
+            authBtn.innerText = initial.toUpperCase();
+            authBtn.classList.remove('logged-out');
+            fetchQboConnections(); 
+        } else {
+            authBtn.innerText = "Login";
+            authBtn.classList.add('logged-out');
             activeQboConnections = [];
             renderQboHeader();
         }
@@ -166,21 +183,33 @@ document.addEventListener('DOMContentLoaded', () => {
         else signInWithPopup(auth, provider);
     });
 
+    // Hamburger Menu Logic
+    const hamburgerBtn = document.getElementById('hamburgerBtn');
+    const sidebar = document.getElementById('sidebar');
+    if (hamburgerBtn && sidebar) {
+        hamburgerBtn.addEventListener('click', () => {
+            if (window.innerWidth <= 768) {
+                sidebar.classList.toggle('show');
+            } else {
+                sidebar.classList.toggle('collapsed');
+            }
+        });
+    }
+
     // Inject Legal Footer
     const legalFooter = document.createElement('div');
     legalFooter.style.marginTop = 'auto'; // Ensures it sticks to the bottom
     legalFooter.innerHTML = `
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px 10px; font-size: 0.85rem; color: #7f8c8d; border-top: 1px solid #eee;">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px 10px; font-size: 0.85rem; color: #7f8c8d; border-top: 1px solid #34495e;">
             <a href="privacy.html" target="_blank" style="color: #3498db; text-decoration: none;">Privacy Policy</a>
             <a href="terms.html" target="_blank" style="color: #3498db; text-decoration: none;">Terms of Service</a>
             <a href="mailto:vnvcpas.excelimporter@gmail.com" style="color: #3498db; text-decoration: none;">Contact Support</a>
-            <div style="margin-top: 10px; font-size: 0.75rem; color: #bdc3c7; border-top: 1px solid #f9f9f9; padding-top: 10px; width: 100%; text-align: center;">
+            <div style="margin-top: 10px; font-size: 0.75rem; color: #bdc3c7; border-top: 1px solid #34495e; padding-top: 10px; width: 100%; text-align: center;">
                 &copy; ${new Date().getFullYear()} Joselito Villarta, CPA, MBA
             </div>
         </div>
     `;
 
-    const sidebar = document.querySelector('.sidebar');
     if (sidebar) {
         sidebar.style.display = 'flex';
         sidebar.style.flexDirection = 'column';
