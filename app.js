@@ -99,27 +99,46 @@ function renderQboHeader() {
         if (nameDisplay) nameDisplay.innerText = '';
         document.getElementById('connectQboBtn').addEventListener('click', initiateQboAuth);
     } else {
-        let optionsHtml = '';
+        // Integrate + Add QBO as the top option of the dropdown list
+        let optionsHtml = `<option value="add_new" style="font-weight: bold; color: var(--accent);">+ Add QBO</option>`;
+        
+        // Push actual connections directly below it
         activeQboConnections.forEach(conn => {
-            optionsHtml += `<option value="${conn.realmId}">${conn.realmId}</option>`;
+            optionsHtml += `<option value="${conn.realmId}">${conn.companyName}</option>`;
         });
 
         container.innerHTML = `
             <select id="qboSelect" class="qbo-select">
                 ${optionsHtml}
             </select>
-            <button id="connectNewQboBtn" class="btn qbo-btn outline-qbo">+ Add QBO</button>
         `;
 
         const qboSelect = document.getElementById('qboSelect');
+        
+        // Auto-select the first valid connection if it exists
+        if (activeQboConnections.length > 0) {
+            qboSelect.value = activeQboConnections[0].realmId;
+        }
+
+        // Store the previous valid value so we can revert if they cancel the QBO login popup
+        let previousValue = qboSelect.value;
+
         const updateNameDisplay = () => {
+            if (qboSelect.value === 'add_new') {
+                qboSelect.value = previousValue; // Revert the UI immediately so "Add QBO" doesn't stay selected
+                initiateQboAuth();
+                return;
+            }
+            previousValue = qboSelect.value;
             const selectedConn = activeQboConnections.find(c => c.realmId === qboSelect.value);
-            if (nameDisplay && selectedConn) nameDisplay.innerText = selectedConn.companyName;
+            if (nameDisplay && selectedConn) {
+                // Prepend "Connected to " to the actual legal company name returned from QBO
+                nameDisplay.innerText = "Connected to " + selectedConn.companyName;
+            }
         };
+        
         qboSelect.addEventListener('change', updateNameDisplay);
         updateNameDisplay(); 
-
-        document.getElementById('connectNewQboBtn').addEventListener('click', initiateQboAuth);
     }
 }
 
