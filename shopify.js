@@ -15,7 +15,7 @@ export default class Shopify {
         this.transactions = [];
         this.categoriesDict = {};
         this.paymentMethods = new Set();
-        this.fileType = null; 
+        this.fileType = null; // 'orders' or 'payouts'
         
         this.depositAccount = "Shopify Clearing"; 
         this.startDate = "";
@@ -207,10 +207,15 @@ export default class Shopify {
         const container = document.getElementById('dynamicTabsContainer');
         let html = `<button class="tab ${this.activeMainTab === 'all' ? 'active' : ''}" data-maintab="all">All Data</button>`;
         
-        // Dynamically add a tab for every unique payment method found in the CSV
-        this.paymentMethods.forEach(method => {
-            html += `<button class="tab ${this.activeMainTab === method ? 'active' : ''}" data-maintab="${method}">${method}</button>`;
-        });
+        if (this.fileType === 'orders') {
+            this.paymentMethods.forEach(method => {
+                html += `<button class="tab ${this.activeMainTab === method ? 'active' : ''}" data-maintab="${method}">${method}</button>`;
+            });
+        } else if (this.fileType === 'payouts') {
+            this.paymentMethods.forEach(method => {
+                html += `<button class="tab ${this.activeMainTab === method ? 'active' : ''}" data-maintab="${method}">${method}</button>`;
+            });
+        }
         
         html += `<button class="tab ${this.activeMainTab === 'unmapped' ? 'active' : ''}" data-maintab="unmapped" style="color: #e74c3c;">Unmapped</button>`;
         container.innerHTML = html;
@@ -222,7 +227,6 @@ export default class Shopify {
         this.updateReadyStatus();
         if (this.activeMainTab === 'unmapped') return this.renderUnmappedTable();
         if (this.activeSubTab === 'table') return this.renderTable();
-        // this.renderJournal(); // Can be built out later if needed for Shopify
     }
 
     updateReadyStatus() {
@@ -285,7 +289,6 @@ export default class Shopify {
             });
         }
 
-        // Filter by the selected Payment Method Tab
         if (this.activeMainTab !== 'all' && this.activeMainTab !== 'unmapped') {
             data = data.filter(t => t.mainTabGrouping === this.activeMainTab);
         }
@@ -332,7 +335,7 @@ export default class Shopify {
                 if (headers.includes('Name') && headers.includes('Lineitem name') && headers.includes('Subtotal')) {
                     this.fileType = 'orders';
                     await this.parseOrdersExport(results.data);
-                } else if (headers.includes('Payout Date') || headers.includes('Fee') || headers.includes('Payout ID') || headers.includes('Transaction Date')) {
+                } else if (headers.includes('Payout Date') || headers.includes('Fee') || headers.includes('Payout ID') || headers.includes('Payment Method Name')) {
                     this.fileType = 'payouts';
                     await this.parsePayoutsExport(results.data);
                 } else {
@@ -375,7 +378,6 @@ export default class Shopify {
 
         for (const [orderId, order] of Object.entries(ordersGroup)) {
             let calculatedLineTotal = 0;
-            // Determine if this order is a Refund Receipt or a Sales Receipt based on status
             const pushType = order.financialStatus.includes('refund') ? 'refund' : 'sales';
 
             order.lines.forEach(row => {
@@ -403,7 +405,7 @@ export default class Shopify {
                     taxes: order.taxes,
                     discount: order.discount,
                     selected: false,
-                    qboPushType: pushType // Internal tag to route to correct handler
+                    qboPushType: pushType 
                 });
             });
 
@@ -432,15 +434,15 @@ export default class Shopify {
         const payoutsGroup = {};
 
         data.forEach(row => {
-            const payoutId = row['Payout ID'] || row['Settlement ID'] || 'Unassigned';
-            // Fallbacks for various Shopify export formats
-            const method = row['Payment Method'] || row['Payment Provider'] || row['Payment provider'] || 'Shopify Payments';
+            const payoutId = row['Payout ID'] || row['Order'] || 'Unassigned';
+            // Explicitly grabbing the required Payment Method Name column per instructions
+            const method = row['Payment Method Name'] || row['Payment Method'] || 'Shopify Payments';
             this.paymentMethods.add(method);
 
             const groupKey = `${method}_${payoutId}`;
 
             if (!payoutsGroup[groupKey]) {
-                payoutsGroup[groupKey] = { payoutId: payoutId, method: method, date: row['Payout Date'] || row['Date'], netSum: 0, lines: [] };
+                payoutsGroup[groupKey] = { payoutId: payoutId, method: method, date: row['Payout Date'] || row['Transaction Date'], netSum: 0, lines: [] };
             }
             const net = this.parseAmt(row['Net'] || row['Amount']);
             payoutsGroup[groupKey].netSum += net;
@@ -464,7 +466,7 @@ export default class Shopify {
                         transactionType: typeStr,
                         lineItem: liAmount,
                         description: `${typeStr} amount for ${group.payoutId}`,
-                        quantity: 1, rate: amt, totalAmount: amt, dateTime: group.date,
+                        quantity: 1, rate: amt, totalAmount: amt, dateTime: row['Payout Date'] || row['Transaction Date'],
                         settlementId: group.payoutId, orderId: row['Order'] || '', mainTabGrouping: group.method,
                         category: (this.categoriesDict[liAmount] || {}).category || "", selected: false,
                         qboPushType: pushType
@@ -478,7 +480,7 @@ export default class Shopify {
                         transactionType: typeStr,
                         lineItem: liFee,
                         description: `${typeStr} processing fee for ${group.payoutId}`,
-                        quantity: 1, rate: reversedFee, totalAmount: reversedFee, dateTime: group.date,
+                        quantity: 1, rate: reversedFee, totalAmount: reversedFee, dateTime: row['Payout Date'] || row['Transaction Date'],
                         settlementId: group.payoutId, orderId: row['Order'] || '', mainTabGrouping: group.method,
                         category: (this.categoriesDict[liFee] || {}).category || "", selected: false,
                         qboPushType: pushType
