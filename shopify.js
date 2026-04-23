@@ -239,7 +239,6 @@ export default class Shopify {
         
         if (this.fileType === 'orders') {
             mainHtml += `<button class="tab ${this.activeMainTab === 'sales' ? 'active' : ''}" data-maintab="sales">Sales Receipts</button>`;
-            mainHtml += `<button class="tab ${this.activeMainTab === 'refunds' ? 'active' : ''}" data-maintab="refunds">Refunds</button>`;
         } else if (this.fileType === 'payouts') {
             mainHtml += `<button class="tab ${this.activeMainTab === 'payouts' ? 'active' : ''}" data-maintab="payouts">Payouts</button>`;
             mainHtml += `<button class="tab ${this.activeMainTab === 'expenses' ? 'active' : ''}" data-maintab="expenses">Expenses</button>`;
@@ -403,7 +402,6 @@ export default class Shopify {
                     lines: [],
                     subtotal: this.parseAmt(row['Subtotal']),
                     paymentMethod: method,
-                    financialStatus: (row['Financial Status'] || '').toLowerCase(),
                     shipping: this.parseAmt(row['Shipping']),
                     taxes: this.parseAmt(row['Taxes']),
                     discount: this.parseAmt(row['Discount Amount']),
@@ -415,7 +413,7 @@ export default class Shopify {
 
         for (const [orderId, order] of Object.entries(ordersGroup)) {
             let calculatedLineTotal = 0;
-            const pushType = order.financialStatus.includes('refund') ? 'refunds' : 'sales';
+            const pushType = 'sales';
 
             order.lines.forEach(row => {
                 const qty = this.parseAmt(row['Lineitem quantity']);
@@ -436,9 +434,9 @@ export default class Shopify {
                     dateTime: order.paidAt,
                     settlementId: '',
                     orderId: orderId,
-                    paymentMethod: order.paymentMethod, // For Top Tab Filtering
-                    mainTabGrouping: pushType,          // For Second Tab Filtering
-                    qboPushType: pushType,              // For routing to QBO Handle
+                    paymentMethod: order.paymentMethod, 
+                    mainTabGrouping: pushType,          
+                    qboPushType: pushType,              
                     category: (this.categoriesDict[lineItemKey] || {}).category || "",
                     shipping: order.shipping,
                     taxes: order.taxes,
@@ -774,10 +772,7 @@ export default class Shopify {
             if (this.activeSubTab === 'table') {
                 if (this.fileType === 'orders') {
                     const salesData = visibleData.filter(t => t.qboPushType === 'sales');
-                    const refundsData = visibleData.filter(t => t.qboPushType === 'refunds');
-
                     if (salesData.length > 0) pushedIds = pushedIds.concat(await pushShopifySalesReceipts(salesData, config, this));
-                    if (refundsData.length > 0) pushedIds = pushedIds.concat(await pushShopifyRefunds(refundsData, config, this));
                     
                 } else if (this.fileType === 'payouts') {
                     const payoutsData = visibleData.filter(t => t.qboPushType === 'payouts');
