@@ -226,7 +226,6 @@ export default class Shopify {
         const payContainer = document.getElementById('paymentTabsContainer');
         const mainContainer = document.getElementById('mainTabsContainer');
 
-        // 1. Render Payment Method Tabs
         let payHtml = `<button class="tab ${this.activePaymentMethod === 'all' ? 'active' : ''}" data-paytab="all">All Gateways</button>`;
         this.paymentMethods.forEach(method => {
             payHtml += `<button class="tab ${this.activePaymentMethod === method ? 'active' : ''}" data-paytab="${method}">${method}</button>`;
@@ -234,7 +233,6 @@ export default class Shopify {
         payContainer.innerHTML = payHtml;
         payContainer.style.display = 'flex';
 
-        // 2. Render Accounting Tabs based on File Type
         let mainHtml = `<button class="tab ${this.activeMainTab === 'all' ? 'active' : ''}" data-maintab="all">All Data</button>`;
         
         if (this.fileType === 'orders') {
@@ -257,7 +255,6 @@ export default class Shopify {
         this.updateReadyStatus();
         if (this.activeMainTab === 'unmapped') return this.renderUnmappedTable();
         if (this.activeSubTab === 'table') return this.renderTable();
-        // this.renderJournal(); // Can be built out later if needed for Shopify
     }
 
     updateReadyStatus() {
@@ -400,7 +397,7 @@ export default class Shopify {
             if (!ordersGroup[orderId]) {
                 ordersGroup[orderId] = {
                     lines: [],
-                    subtotal: this.parseAmt(row['Subtotal']),
+                    total: this.parseAmt(row['Total']), // We now validate against the Grand Total
                     paymentMethod: method,
                     shipping: this.parseAmt(row['Shipping']),
                     taxes: this.parseAmt(row['Taxes']),
@@ -415,6 +412,7 @@ export default class Shopify {
             let calculatedLineTotal = 0;
             const pushType = 'sales';
 
+            // 1. Process Product Line Items
             order.lines.forEach(row => {
                 const qty = this.parseAmt(row['Lineitem quantity']);
                 const price = this.parseAmt(row['Lineitem price']);
@@ -438,22 +436,92 @@ export default class Shopify {
                     mainTabGrouping: pushType,          
                     qboPushType: pushType,              
                     category: (this.categoriesDict[lineItemKey] || {}).category || "",
-                    shipping: order.shipping,
-                    taxes: order.taxes,
-                    discount: order.discount,
                     selected: false
                 });
             });
 
-            const diff = Math.abs(Math.round(calculatedLineTotal * 100) - Math.round(order.subtotal * 100)) / 100;
+            // 2. Explode Shipping into its own row
+            if (order.shipping > 0) {
+                calculatedLineTotal += order.shipping;
+                const lineItemKey = "Order - Shipping";
+                this.transactions.push({
+                    uid: Date.now().toString(36) + Math.random().toString(36).substring(2),
+                    transactionType: 'Order',
+                    lineItem: lineItemKey,
+                    description: 'Shipping Collected',
+                    sku: 'SHIPPING',
+                    quantity: 1,
+                    rate: order.shipping,
+                    totalAmount: order.shipping,
+                    dateTime: order.paidAt,
+                    settlementId: '',
+                    orderId: orderId,
+                    paymentMethod: order.paymentMethod, 
+                    mainTabGrouping: pushType,          
+                    qboPushType: pushType,              
+                    category: (this.categoriesDict[lineItemKey] || {}).category || "",
+                    selected: false
+                });
+            }
+
+            // 3. Explode Taxes into its own row
+            if (order.taxes > 0) {
+                calculatedLineTotal += order.taxes;
+                const lineItemKey = "Order - Taxes";
+                this.transactions.push({
+                    uid: Date.now().toString(36) + Math.random().toString(36).substring(2),
+                    transactionType: 'Order',
+                    lineItem: lineItemKey,
+                    description: 'Taxes Collected',
+                    sku: 'TAX',
+                    quantity: 1,
+                    rate: order.taxes,
+                    totalAmount: order.taxes,
+                    dateTime: order.paidAt,
+                    settlementId: '',
+                    orderId: orderId,
+                    paymentMethod: order.paymentMethod, 
+                    mainTabGrouping: pushType,          
+                    qboPushType: pushType,              
+                    category: (this.categoriesDict[lineItemKey] || {}).category || "",
+                    selected: false
+                });
+            }
+
+            // 4. Explode Discounts into its own row (Negative Amount)
+            if (order.discount > 0) {
+                calculatedLineTotal -= order.discount;
+                const lineItemKey = "Order - Discount";
+                this.transactions.push({
+                    uid: Date.now().toString(36) + Math.random().toString(36).substring(2),
+                    transactionType: 'Order',
+                    lineItem: lineItemKey,
+                    description: 'Order Discount',
+                    sku: 'DISCOUNT',
+                    quantity: 1,
+                    rate: -order.discount,
+                    totalAmount: -order.discount,
+                    dateTime: order.paidAt,
+                    settlementId: '',
+                    orderId: orderId,
+                    paymentMethod: order.paymentMethod, 
+                    mainTabGrouping: pushType,          
+                    qboPushType: pushType,              
+                    category: (this.categoriesDict[lineItemKey] || {}).category || "",
+                    selected: false
+                });
+            }
+
+            // AUDITOR VALIDATION: We now validate the constructed lines against the Grand Total
+            const diff = Math.abs(Math.round(calculatedLineTotal * 100) - Math.round(order.total * 100)) / 100;
             if (diff > 0.01) {
-                validationErrors.push(`Order ${orderId}: Computed Lines ($${calculatedLineTotal.toFixed(2)}) != Subtotal ($${order.subtotal.toFixed(2)})`);
+                validationErrors.push(`Order ${orderId}: Computed Line Items ($${calculatedLineTotal.toFixed(2)}) != Target Order Total ($${order.total.toFixed(2)})`);
             }
         }
 
         if (validationErrors.length > 0) {
             document.getElementById('syncQboBtn').disabled = true;
-            this.showAlert(`<strong>Validation Failed:</strong> Mismatch between Line Items and Subtotal detected in the following orders. You cannot push until this is corrected in the CSV.<br><br><span style="font-size:0.8rem; font-family:monospace;">${validationErrors.join('<br>')}</span>`, "danger");
+            this.showAlert(`<strong>Validation Failed:</strong> Mismatch between Line Items and Total detected in the following orders. You cannot push until this is corrected in the CSV.<br><br><span style="font-size:0.8rem; font-family:monospace;">${validationErrors.join('<br>')}</span>`, "danger");
         } else {
             document.getElementById('syncQboBtn').disabled = false;
         }
