@@ -5,6 +5,7 @@ import { currentUser } from '../app.js';
 
 export async function pushShopifyExpenses(data, config, context) {
     const pushQboEntity = httpsCallable(config.functions, 'pushQboEntity');
+    
     const groups = {};
     data.forEach(t => {
         if (!t.category) throw new Error("Missing category mapping in Expenses.");
