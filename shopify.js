@@ -20,9 +20,9 @@ export default class Shopify {
         this.depositAccount = "Shopify Clearing"; 
         this.startDate = "";
         this.endDate = "";
-        this.activePaymentMethod = "all"; // New State for Payment Method Tab
-        this.activeMainTab = "all";       // State for Sales/Payouts/Expenses Tab
-        this.activeSubTab = "table";      // State for Table/Journal Tab
+        this.activePaymentMethod = "all"; 
+        this.activeMainTab = "all";       
+        this.activeSubTab = "table";      
         
         this.userRole = 'guest'; 
         this.userProfile = null;
@@ -90,7 +90,7 @@ export default class Shopify {
 
                 <div id="mainTabsContainer" class="tabs main-tabs desktop-scroll-row" style="border-bottom: 2px solid #27ae60; margin-bottom: 0; gap: 0;">
                     <button class="tab active" data-maintab="all">All Data</button>
-                    </div>
+                </div>
 
                 <div class="tabs sub-tabs desktop-scroll-row" style="background: #f8f9fa; padding-top: 5px; margin-bottom: 1rem;" id="subTabContainer">
                     <button class="tab active" data-subtab="table" style="font-size: 0.9rem; padding: 0.5rem 1rem;">Data Table View</button>
@@ -397,11 +397,13 @@ export default class Shopify {
             if (!ordersGroup[orderId]) {
                 ordersGroup[orderId] = {
                     lines: [],
-                    total: this.parseAmt(row['Total']), // We now validate against the Grand Total
+                    subtotal: this.parseAmt(row['Subtotal']),
+                    total: this.parseAmt(row['Total']),
                     paymentMethod: method,
                     shipping: this.parseAmt(row['Shipping']),
                     taxes: this.parseAmt(row['Taxes']),
                     discount: this.parseAmt(row['Discount Amount']),
+                    duties: this.parseAmt(row['Duties']),
                     paidAt: row['Paid at'] || row['Created at']
                 };
             }
@@ -409,14 +411,14 @@ export default class Shopify {
         });
 
         for (const [orderId, order] of Object.entries(ordersGroup)) {
-            let calculatedLineTotal = 0;
-            const pushType = 'sales';
+            let calculatedItemTotal = 0;
+            const pushType = 'sales'; // 1099-K compliance: all orders are sales receipts
 
-            // 1. Process Product Line Items
+            // 1. Process Core Product Line Items
             order.lines.forEach(row => {
                 const qty = this.parseAmt(row['Lineitem quantity']);
                 const price = this.parseAmt(row['Lineitem price']);
-                calculatedLineTotal += (qty * price);
+                calculatedItemTotal += (qty * price);
 
                 const lineItemKey = "Order - Item Price";
                 
@@ -441,8 +443,7 @@ export default class Shopify {
             });
 
             // 2. Explode Shipping into its own row
-            if (order.shipping > 0) {
-                calculatedLineTotal += order.shipping;
+            if (order.shipping !== 0) {
                 const lineItemKey = "Order - Shipping";
                 this.transactions.push({
                     uid: Date.now().toString(36) + Math.random().toString(36).substring(2),
@@ -465,8 +466,7 @@ export default class Shopify {
             }
 
             // 3. Explode Taxes into its own row
-            if (order.taxes > 0) {
-                calculatedLineTotal += order.taxes;
+            if (order.taxes !== 0) {
                 const lineItemKey = "Order - Taxes";
                 this.transactions.push({
                     uid: Date.now().toString(36) + Math.random().toString(36).substring(2),
@@ -489,8 +489,7 @@ export default class Shopify {
             }
 
             // 4. Explode Discounts into its own row (Negative Amount)
-            if (order.discount > 0) {
-                calculatedLineTotal -= order.discount;
+            if (order.discount !== 0) {
                 const lineItemKey = "Order - Discount";
                 this.transactions.push({
                     uid: Date.now().toString(36) + Math.random().toString(36).substring(2),
@@ -499,8 +498,8 @@ export default class Shopify {
                     description: 'Order Discount',
                     sku: 'DISCOUNT',
                     quantity: 1,
-                    rate: -order.discount,
-                    totalAmount: -order.discount,
+                    rate: -Math.abs(order.discount),
+                    totalAmount: -Math.abs(order.discount),
                     dateTime: order.paidAt,
                     settlementId: '',
                     orderId: orderId,
@@ -512,10 +511,41 @@ export default class Shopify {
                 });
             }
 
-            // AUDITOR VALIDATION: We now validate the constructed lines against the Grand Total
-            const diff = Math.abs(Math.round(calculatedLineTotal * 100) - Math.round(order.total * 100)) / 100;
+            // 5. Explode Duties into its own row
+            if (order.duties !== 0) {
+                const lineItemKey = "Order - Duties";
+                this.transactions.push({
+                    uid: Date.now().toString(36) + Math.random().toString(36).substring(2),
+                    transactionType: 'Order',
+                    lineItem: lineItemKey,
+                    description: 'Duties Collected',
+                    sku: 'DUTIES',
+                    quantity: 1,
+                    rate: order.duties,
+                    totalAmount: order.duties,
+                    dateTime: order.paidAt,
+                    settlementId: '',
+                    orderId: orderId,
+                    paymentMethod: order.paymentMethod, 
+                    mainTabGrouping: pushType,          
+                    qboPushType: pushType,              
+                    category: (this.categoriesDict[lineItemKey] || {}).category || "",
+                    selected: false
+                });
+            }
+
+            // AUDITOR VALIDATION: Sum(Items) + Shipping + Duties - Discount = Target Amount
+            const computedAmount = calculatedItemTotal + order.shipping + order.duties - order.discount;
+            let targetAmount = order.total;
+
+            // If Total includes taxes (computed + taxes = total), deduct taxes from target so formula balances strictly based on inputs
+            if (Math.abs((computedAmount + order.taxes) - order.total) < 0.05) {
+                targetAmount = order.total - order.taxes;
+            }
+
+            const diff = Math.abs(Math.round(computedAmount * 100) - Math.round(targetAmount * 100)) / 100;
             if (diff > 0.01) {
-                validationErrors.push(`Order ${orderId}: Computed Line Items ($${calculatedLineTotal.toFixed(2)}) != Target Order Total ($${order.total.toFixed(2)})`);
+                validationErrors.push(`Order ${orderId}: Computed (${computedAmount.toFixed(2)}) != Target (${targetAmount.toFixed(2)})`);
             }
         }
 
