@@ -80,6 +80,7 @@ export default class Shopify {
 
                     <input type="text" id="depositAccount" value="Shopify Clearing" placeholder="Target Bank/Clearing" style="width: 200px;">
                     <button id="syncQboBtn" class="btn" disabled>Push Current View</button>
+                    <button id="viewHistoryBtn" class="btn outline" style="background: white; color: #2c3e50; border: 1px solid #2c3e50;">View Batch History</button>
                 </div>
 
                 <div id="dynamicTabsContainer" class="tabs main-tabs desktop-scroll-row" style="border-bottom: 2px solid #27ae60; margin-bottom: 0; gap: 0;">
@@ -93,6 +94,17 @@ export default class Shopify {
 
                 <div id="tabContent">
                     <p style="padding: 2rem; text-align: center; color: #7f8c8d;">Awaiting Shopify Export CSV...</p>
+                </div>
+            </div>
+            
+            <div id="historyModal" class="modal-overlay">
+                <div class="modal-content" style="max-width: 900px;">
+                    <h2 style="margin-top:0;">QBO Push History (Batches)</h2>
+                    <p style="color: #666;">View and reverse recent transaction batches pushed to QuickBooks.</p>
+                    <div id="historyTableContainer" style="margin: 1rem 0; max-height: 400px; overflow-y: auto;"></div>
+                    <div style="text-align: right; margin-top: 1rem;">
+                        <button class="btn outline" onclick="document.getElementById('historyModal').style.display='none'" style="color: black; border-color: #ccc;">Close</button>
+                    </div>
                 </div>
             </div>
         `;
@@ -111,8 +123,15 @@ export default class Shopify {
         document.getElementById('startDate').addEventListener('change', e => { this.startDate = e.target.value; this.renderActiveView(); });
         document.getElementById('endDate').addEventListener('change', e => { this.endDate = e.target.value; this.renderActiveView(); });
         document.getElementById('syncQboBtn').addEventListener('click', () => this.handlePushToQbo());
+        
+        document.getElementById('viewHistoryBtn').addEventListener('click', () => {
+            if (!currentUser) return this.showAlert("You must be logged in to view history.", "warning");
+            document.getElementById('historyModal').style.display = 'flex';
+            this.loadBatchHistory();
+        });
 
         this.attachSubTabListeners();
+        window.deleteBatch = (batchId, realmId) => this.handleDeleteBatch(batchId, realmId);
     }
 
     async checkUserRoleAndLimits() {
@@ -120,7 +139,31 @@ export default class Shopify {
             document.getElementById('tabContent').innerHTML = `<p style="padding: 2rem; text-align: center; color: #7f8c8d;">Please log in to continue.</p>`;
             return;
         }
-        this.userRole = 'admin'; // Simplified for scaffold
+        
+        this.userRole = 'guest'; 
+        if (currentUser.email === 'vnvcpas.excelimporter@gmail.com') {
+            this.userRole = 'super_admin';
+        } else {
+            try {
+                const adminDoc = await getDoc(doc(db, "global_config", "admins"));
+                if (adminDoc.exists() && adminDoc.data()[currentUser.email]) this.userRole = 'admin';
+            } catch (e) {}
+        }
+
+        const profileRef = doc(db, "users", currentUser.uid, "profile", "billing");
+        const profileSnap = await getDoc(profileRef);
+
+        if (!profileSnap.exists()) {
+            this.userProfile = { email: currentUser.email, role: this.userRole, monthlyBatchesPushed: 0, monthlyLimit: this.userRole === 'guest' ? 10 : Infinity, billingPeriodEnd: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString() };
+            await setDoc(profileRef, this.userProfile);
+        } else {
+            this.userProfile = profileSnap.data();
+            if (new Date() > new Date(this.userProfile.billingPeriodEnd)) {
+                this.userProfile.monthlyBatchesPushed = 0;
+                this.userProfile.billingPeriodEnd = new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString();
+                await setDoc(profileRef, { monthlyBatchesPushed: 0, billingPeriodEnd: this.userProfile.billingPeriodEnd }, { merge: true });
+            }
+        }
         this.updateReadyStatus();
     }
 
@@ -130,6 +173,20 @@ export default class Shopify {
                 document.querySelectorAll('.main-tabs .tab').forEach(t => t.classList.remove('active'));
                 e.target.classList.add('active');
                 this.activeMainTab = e.target.dataset.maintab;
+                
+                const ctrlPanel = document.getElementById('controlPanel');
+                const subTabs = document.getElementById('subTabContainer');
+                const statusBar = document.getElementById('pushStatusBar');
+                
+                if (this.activeMainTab === 'unmapped') {
+                    ctrlPanel.style.display = 'flex';
+                    subTabs.style.display = 'none';
+                    statusBar.style.display = 'flex';
+                } else {
+                    ctrlPanel.style.display = 'flex';
+                    subTabs.style.display = 'flex';
+                    statusBar.style.display = 'flex';
+                }
                 this.renderActiveView();
             });
         });
@@ -170,15 +227,56 @@ export default class Shopify {
         this.updateReadyStatus();
         if (this.activeMainTab === 'unmapped') return this.renderUnmappedTable();
         if (this.activeSubTab === 'table') return this.renderTable();
-        // this.renderJournal(); // Can be added later
+        // this.renderJournal(); // Can be built out later if needed for Shopify
     }
 
     updateReadyStatus() {
         const statusText = document.getElementById('pushStatusText');
+        const progressFill = document.getElementById('pushProgressFill');
+        const limitText = document.getElementById('limitText');
+
         if (!statusText) return;
+        
+        if (limitText) {
+            if (this.userRole === 'super_admin' || this.userRole === 'admin') {
+                limitText.innerHTML = `<strong>${this.userRole.toUpperCase()}</strong> | Unlimited Pushes`;
+                limitText.style.color = "#27ae60";
+            } else {
+                let remaining = Math.max(0, 10 - (this.userProfile?.monthlyBatchesPushed || 0));
+                limitText.innerHTML = `<strong>GUEST</strong> | ${remaining} batches left`;
+                limitText.style.color = remaining <= 2 ? "#e74c3c" : "#666";
+            }
+        }
+
+        if (progressFill) progressFill.style.width = '0%';
+        statusText.style.color = "#2c3e50";
+        statusText.style.textShadow = "none";
+
+        if (this.activeMainTab === 'unmapped') {
+            const unmappedCount = new Set(this.transactions.filter(t => !t.category).map(t => t.lineItem)).size;
+            statusText.innerText = `${unmappedCount} unmapped items to resolve.`;
+            statusText.style.color = "#e74c3c";
+            return;
+        }
+
         const currentData = this.getFilteredData();
         statusText.innerText = `Status: ${currentData.length} lines ready in current view.`;
-        statusText.style.color = "#2c3e50";
+    }
+
+    updatePushProgress(linesPushed, txnsPushed, totalLines, totalTxns, typeName) {
+        const statusText = document.getElementById('pushStatusText');
+        const progressFill = document.getElementById('pushProgressFill');
+        
+        if (statusText) {
+            statusText.innerText = `${linesPushed} lines for ${txnsPushed} ${typeName} transactions pushed.`;
+            statusText.style.color = "#ffffff"; 
+            statusText.style.textShadow = "1px 1px 3px rgba(0,0,0,0.6)"; 
+        }
+        
+        if (progressFill && totalTxns > 0) {
+            const percentage = Math.min(100, Math.round((txnsPushed / totalTxns) * 100));
+            progressFill.style.width = `${percentage}%`;
+        }
     }
 
     getFilteredData() {
@@ -191,6 +289,7 @@ export default class Shopify {
                 return true;
             });
         }
+
         if (this.activeMainTab !== 'all' && this.activeMainTab !== 'unmapped') {
             data = data.filter(t => t.mainTabGrouping === this.activeMainTab);
         }
@@ -202,6 +301,18 @@ export default class Shopify {
         snap.forEach(doc => { 
             this.categoriesDict[doc.id] = { category: doc.data().category, accountType: doc.data().accountType || "" }; 
         });
+    }
+
+    async updateCategory(lineItem, newCategory) {
+        if(!newCategory || newCategory.trim() === "") return;
+        try {
+            await setDoc(doc(db, "category", lineItem), { lineItem: lineItem, category: newCategory }, { merge: true });
+            if (!this.categoriesDict[lineItem]) this.categoriesDict[lineItem] = {};
+            this.categoriesDict[lineItem].category = newCategory;
+            
+            this.transactions.forEach(t => { if(t.lineItem === lineItem) t.category = newCategory; });
+            this.renderActiveView(); 
+        } catch (e) { this.showAlert("Error updating category database.", "danger"); }
     }
 
     showAlert(message, type = "warning") {
@@ -225,7 +336,7 @@ export default class Shopify {
                 if (headers.includes('Name') && headers.includes('Lineitem name') && headers.includes('Subtotal')) {
                     this.fileType = 'orders';
                     await this.parseOrdersExport(results.data);
-                } else if (headers.includes('Payout Date') && headers.includes('Fee') && headers.includes('Payout ID')) {
+                } else if (headers.includes('Payout Date') || headers.includes('Fee') || headers.includes('Payout ID')) {
                     this.fileType = 'payouts';
                     await this.parsePayoutsExport(results.data);
                 } else {
@@ -256,7 +367,7 @@ export default class Shopify {
                     shipping: this.parseAmt(row['Shipping']),
                     taxes: this.parseAmt(row['Taxes']),
                     discount: this.parseAmt(row['Discount Amount']),
-                    paidAt: row['Paid at'] || row['Created at'] // Fallback if unpaid
+                    paidAt: row['Paid at'] || row['Created at']
                 };
             }
             ordersGroup[orderId].lines.push(row);
@@ -294,8 +405,6 @@ export default class Shopify {
                 });
             });
 
-            // AUDITOR VALIDATION: HARD BLOCK ON SUBTOTAL MISMATCH
-            // Rounding to 2 decimals to prevent floating point errors
             const diff = Math.abs(Math.round(calculatedLineTotal * 100) - Math.round(order.subtotal * 100)) / 100;
             if (diff > 0.01) {
                 validationErrors.push(`Order ${orderId}: Computed Lines ($${calculatedLineTotal.toFixed(2)}) != Subtotal ($${order.subtotal.toFixed(2)})`);
@@ -303,7 +412,7 @@ export default class Shopify {
         }
 
         if (validationErrors.length > 0) {
-            document.getElementById('syncQboBtn').disabled = true; // Hard Block
+            document.getElementById('syncQboBtn').disabled = true;
             this.showAlert(`<strong>Validation Failed:</strong> Mismatch between Line Items and Subtotal detected in the following orders. You cannot push until this is corrected in the CSV.<br><br><span style="font-size:0.8rem; font-family:monospace;">${validationErrors.join('<br>')}</span>`, "danger");
         } else {
             document.getElementById('syncQboBtn').disabled = false;
@@ -320,7 +429,6 @@ export default class Shopify {
         
         const payoutsGroup = {};
 
-        // 1. Group by Payout ID and Calculate Net
         data.forEach(row => {
             const payoutId = row['Payout ID'] || 'Unassigned';
             if (!payoutsGroup[payoutId]) {
@@ -331,7 +439,6 @@ export default class Shopify {
             payoutsGroup[payoutId].lines.push(row);
         });
 
-        // 2. Route lines based on Net sum
         for (const [payoutId, group] of Object.entries(payoutsGroup)) {
             const isPositiveNet = group.netSum >= 0;
             const targetTab = isPositiveNet ? 'payouts' : 'expenses';
@@ -340,9 +447,8 @@ export default class Shopify {
                 const typeStr = row['Type'] || 'Unknown';
                 const amt = this.parseAmt(row['Amount']);
                 const fee = this.parseAmt(row['Fee']);
-                const reversedFee = fee * -1; // Reverse sign as requested
+                const reversedFee = fee * -1; 
 
-                // Construct Amount Line
                 if (amt !== 0) {
                     const liAmount = `${typeStr} - Amount`;
                     this.transactions.push({
@@ -356,7 +462,6 @@ export default class Shopify {
                     });
                 }
 
-                // Construct Fee Line
                 if (fee !== 0) {
                     const liFee = `${typeStr} - Fee`;
                     this.transactions.push({
@@ -371,7 +476,6 @@ export default class Shopify {
                 }
             });
 
-            // 3. Negative Net Offset Deposit Line
             if (!isPositiveNet && group.netSum !== 0) {
                 const liDeposit = `Payout Reversal Deposit`;
                 const absNet = Math.abs(group.netSum);
@@ -396,11 +500,13 @@ export default class Shopify {
         const currentData = this.getFilteredData();
         let html = `
             <div style="margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center;">
+                <button class="btn danger" onclick="window.deleteSelected()">Delete Selected Rows</button>
+                <span style="font-size:0.9rem; color:#d35400; font-weight:bold;">⚠️ Checked rows are ignored and will NOT be pushed to QBO.</span>
                 <span style="font-size:0.9rem; color:#666;">Showing ${currentData.length} rows</span>
             </div>
             <div class="table-responsive">
             <table><thead><tr>
-                <th style="width: 40px;"><input type="checkbox"></th>
+                <th style="width: 40px;"><input type="checkbox" id="selectAllCb" onchange="window.toggleSelectAll(this.checked)"></th>
                 <th>Type</th>
                 <th>Line Item</th>
                 <th>Category</th>
@@ -409,21 +515,23 @@ export default class Shopify {
                 <th style="text-align: right;">Qty</th>
                 <th style="text-align: right;">Rate</th>
                 <th style="text-align: right;">Total</th>
-                <th>Date</th>
-                <th>Settlement ID</th>
-                <th>Order ID</th>
+                <th>Date Paid</th>
+                <th>Order/Settlement ID</th>
             </tr></thead><tbody>
         `;
 
         if (currentData.length === 0) {
-            html += `<tr><td colspan="12" style="text-align:center;">No data.</td></tr>`;
+            html += `<tr><td colspan="11" style="text-align:center;">No data matches the current filters.</td></tr>`;
         }
 
         currentData.forEach((t) => {
-            let catDisplay = t.category || `<input type="text" class="cat-input" placeholder="Add Category..."><span class="text-danger"> Missing</span>`;
-            
+            let catDisplay = t.category;
+            if (!t.category) {
+                catDisplay = `<input type="text" class="cat-input" placeholder="Add Category..." onblur="window.updateCat('${t.lineItem}', this.value)"><span class="text-danger"> Missing</span>`;
+            }
+
             html += `<tr>
-                <td><input type="checkbox" class="row-checkbox" ${t.selected ? 'checked' : ''}></td>
+                <td><input type="checkbox" class="row-checkbox" data-uid="${t.uid}" ${t.selected ? 'checked' : ''} onchange="window.toggleRow('${t.uid}', this.checked)"></td>
                 <td>${t.transactionType}</td>
                 <td><strong>${t.lineItem}</strong></td>
                 <td>${catDisplay}</td>
@@ -433,13 +541,35 @@ export default class Shopify {
                 <td style="text-align: right;">${t.rate.toFixed(2)}</td>
                 <td style="text-align: right; font-weight: bold;">${t.totalAmount.toFixed(2)}</td>
                 <td>${this.formatDateStr(t.dateTime)}</td>
-                <td>${t.settlementId}</td>
-                <td>${t.orderId}</td>
+                <td>${t.orderId || t.settlementId}</td>
             </tr>`;
         });
 
         html += `</tbody></table></div>`;
         document.getElementById('tabContent').innerHTML = html;
+
+        window.updateCat = (line, val) => this.updateCategory(line, val);
+        
+        window.toggleSelectAll = (checked) => {
+            currentData.forEach(t => {
+                const masterRow = this.transactions.find(m => m.uid === t.uid);
+                if (masterRow) masterRow.selected = checked;
+            });
+            document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = checked);
+        };
+        
+        window.toggleRow = (uid, checked) => {
+            const masterRow = this.transactions.find(t => t.uid === uid);
+            if (masterRow) masterRow.selected = checked;
+            const allChecked = currentData.length > 0 && currentData.every(t => t.selected);
+            const selectAllCb = document.getElementById('selectAllCb');
+            if (selectAllCb) selectAllCb.checked = allChecked;
+        };
+
+        window.deleteSelected = () => {
+            this.transactions = this.transactions.filter(t => !t.selected);
+            this.renderActiveView();
+        };
     }
 
     renderUnmappedTable() {
@@ -454,38 +584,268 @@ export default class Shopify {
         });
 
         let html = `
+            <div style="margin-bottom: 10px;">
+                <span style="font-size:0.9rem; color:#666;">Showing ${unmappedData.length} unique unmapped line items.</span>
+            </div>
             <div class="table-responsive">
             <table><thead><tr>
                 <th>Line Item</th>
                 <th>Category Name (QBO Account)</th>
                 <th>Account Type</th>
                 <th>Description</th>
+                <th style="text-align:center;">Action</th>
             </tr></thead><tbody>
         `;
 
         if (unmappedData.length === 0) {
-            html += `<tr><td colspan="4" style="text-align:center; padding: 2rem; color: #27ae60; font-weight: bold;">All line items are successfully mapped!</td></tr>`;
+            html += `<tr><td colspan="5" style="text-align:center; padding: 2rem; color: #27ae60; font-weight: bold;">All line items are successfully mapped!</td></tr>`;
         }
 
         unmappedData.forEach((t, i) => {
             html += `<tr>
                 <td><strong>${t.lineItem}</strong></td>
-                <td><input type="text" placeholder="E.g., Shopify Sales"></td>
+                <td><input type="text" id="unmap-cat-${i}" placeholder="E.g., Shopify Sales, Gateway Fees..." style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
                 <td>
-                    <select>
+                    <select id="unmap-type-${i}" style="padding:0.4rem; width:100%; box-sizing: border-box;">
                         <option value="Income">Income</option>
                         <option value="Expense" selected>Expense</option>
+                        <option value="Bank">Bank / Clearing</option>
+                        <option value="OtherCurrentAsset">Other Current Asset</option>
+                        <option value="CostOfGoodsSold">Cost of Goods Sold</option>
                     </select>
                 </td>
-                <td><input type="text" placeholder="Optional desc"></td>
+                <td><input type="text" id="unmap-desc-${i}" placeholder="Optional internal description" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
+                <td style="text-align:center;">
+                    <button class="btn" onclick="window.pushAndSaveUnmapped('${t.lineItem}', ${i})">Push to QBO & Save</button>
+                </td>
             </tr>`;
         });
 
         html += `</tbody></table></div>`;
         document.getElementById('tabContent').innerHTML = html;
+
+        window.pushAndSaveUnmapped = async (lineItem, index) => {
+            const catVal = document.getElementById(`unmap-cat-${index}`).value.trim();
+            const typeVal = document.getElementById(`unmap-type-${index}`).value;
+            const descVal = document.getElementById(`unmap-desc-${index}`).value.trim();
+            const btn = event.target;
+
+            if (!catVal) { 
+                this.showAlert("Please enter a Category Name (QBO Account Name).", "danger"); 
+                return; 
+            }
+            
+            const qboSelect = document.getElementById('qboSelect');
+            if (!qboSelect || !qboSelect.value) {
+                this.showAlert("Please connect and select a QBO account from the top menu first.", "warning");
+                return;
+            }
+
+            btn.innerText = "Pushing...";
+            btn.disabled = true;
+
+            try {
+                const getOrCreateQboAccount = httpsCallable(functions, 'getOrCreateQboAccount');
+                
+                await getOrCreateQboAccount({
+                    accountName: catVal,
+                    realmId: qboSelect.value,
+                    accountType: typeVal,
+                    description: descVal
+                });
+
+                await setDoc(doc(db, "category", lineItem), {
+                    lineItem: lineItem,
+                    category: catVal,
+                    accountType: typeVal,
+                    description: descVal
+                }, { merge: true });
+
+                if (!this.categoriesDict[lineItem]) this.categoriesDict[lineItem] = {};
+                this.categoriesDict[lineItem].category = catVal;
+                this.categoriesDict[lineItem].accountType = typeVal;
+                
+                this.transactions.forEach(t => {
+                    if (t.lineItem === lineItem) t.category = catVal;
+                });
+
+                this.showAlert(`Successfully created "${catVal}" as ${typeVal} in QBO and mapped it!`, "success");
+                this.renderActiveView(); 
+
+            } catch (err) {
+                this.showAlert(err.message, "danger");
+                btn.innerText = "Push to QBO & Save";
+                btn.disabled = false;
+            }
+        };
     }
 
     async handlePushToQbo() {
-        this.showAlert("Push handlers pending linking to QBO backend logic.", "info");
+        if (this.userRole === 'guest' && this.userProfile.monthlyBatchesPushed >= 10) {
+            return this.showAlert("Monthly push limit reached (10/10). Please subscribe in the UI to continue pushing data.", "danger");
+        }
+
+        if (this.activeMainTab === 'all') return this.showAlert("Please select a specific transaction tab to push.", "warning");
+        const qboSelect = document.getElementById('qboSelect');
+        if (!qboSelect || !qboSelect.value) return this.showAlert("Please connect and select a QBO account first.", "warning");
+
+        const visibleData = this.getFilteredData().filter(t => !t.selected);
+        if (visibleData.length === 0) return this.showAlert("No unchecked transactions in the current view to push.", "warning");
+
+        const pushBtn = document.getElementById('syncQboBtn');
+        const statusText = document.getElementById('pushStatusText');
+        const originalText = pushBtn.innerText;
+        
+        pushBtn.innerText = "Provisioning & Pushing...";
+        pushBtn.disabled = true;
+        
+        if(statusText) {
+            statusText.innerText = "Initializing push connection...";
+            statusText.style.color = "#ffffff"; 
+            statusText.style.textShadow = "1px 1px 3px rgba(0,0,0,0.6)";
+        }
+
+        let wakeLock = null;
+        try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
+
+        try {
+            const config = {
+                realmId: qboSelect.value,
+                depositAccountName: this.depositAccount && this.depositAccount.trim() !== "" ? this.depositAccount : "Shopify Clearing",
+                functions: functions,
+                endDate: this.endDate,
+                batchId: `batch_${Date.now()}` 
+            };
+
+            let pushedIds = [];
+
+            if (this.activeSubTab === 'table') {
+                if (this.fileType === 'orders') {
+                    pushedIds = await pushShopifySalesReceipts(visibleData, config, this);
+                } else if (this.fileType === 'payouts') {
+                    if (this.activeMainTab === 'refunds') pushedIds = await pushShopifyRefunds(visibleData, config, this);
+                    else if (this.activeMainTab === 'deposits') pushedIds = await pushShopifyDeposits(visibleData, config, this);
+                    else if (this.activeMainTab === 'expenses') pushedIds = await pushShopifyExpenses(visibleData, config, this);
+                    else if (this.activeMainTab === 'payouts') pushedIds = await pushShopifyPayouts(visibleData, config, this);
+                }
+            } else {
+                this.showAlert("Journal view pushing for Shopify is currently under construction.", "info");
+                throw new Error("Journal View not yet supported for Shopify.");
+            }
+
+            if (pushedIds && pushedIds.length > 0) {
+                await setDoc(doc(db, "users", currentUser.uid, "transPushedToQB", config.batchId), {
+                    timestamp: new Date().toISOString(),
+                    realmId: config.realmId,
+                    tab: this.activeMainTab,
+                    view: this.activeSubTab,
+                    qboIds: pushedIds
+                });
+
+                if (this.userRole === 'guest') {
+                    this.userProfile.monthlyBatchesPushed++;
+                    await setDoc(doc(db, "users", currentUser.uid, "profile", "billing"), {
+                        monthlyBatchesPushed: this.userProfile.monthlyBatchesPushed
+                    }, { merge: true });
+                    this.updateReadyStatus(); 
+                }
+                
+                if (statusText) statusText.innerText = `Push completed successfully! ${pushedIds.length} transactions saved to QBO.`;
+            } else {
+                if (statusText) {
+                    statusText.innerText = `All selected transactions were identified as duplicates and skipped.`;
+                    statusText.style.color = "#e67e22"; 
+                    statusText.style.textShadow = "none";
+                    document.getElementById('pushProgressFill').style.width = '0%';
+                }
+            }
+        } catch (error) {
+            console.error("Push failed:", error);
+            this.showAlert(error.message || "Failed to push to QBO. See console.", "danger");
+            if(statusText) {
+                statusText.innerText = "Status: Push failed. Check alerts.";
+                statusText.style.color = "#e74c3c";
+                statusText.style.textShadow = "none";
+                document.getElementById('pushProgressFill').style.width = '0%';
+            }
+        } finally {
+            if (wakeLock !== null) wakeLock.release().catch(()=>{});
+            pushBtn.innerText = originalText;
+            pushBtn.disabled = false;
+        }
+    }
+
+    async loadBatchHistory() {
+        const container = document.getElementById('historyTableContainer');
+        container.innerHTML = "<p>Loading history...</p>";
+
+        try {
+            const snap = await getDocs(collection(db, "users", currentUser.uid, "transPushedToQB"));
+            let batches = [];
+            snap.forEach(doc => batches.push({ id: doc.id, ...doc.data() }));
+            batches.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+            if (batches.length === 0) {
+                container.innerHTML = "<p>No batches pushed yet.</p>";
+                return;
+            }
+
+            let html = `
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
+                    <thead style="background: #f8f9fa;">
+                        <tr>
+                            <th style="padding: 10px; border-bottom: 2px solid #ddd;">Date Pushed</th>
+                            <th style="padding: 10px; border-bottom: 2px solid #ddd;">Tab / View</th>
+                            <th style="padding: 10px; border-bottom: 2px solid #ddd;">Items Created</th>
+                            <th style="padding: 10px; border-bottom: 2px solid #ddd; text-align: center;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            batches.forEach(b => {
+                const dateStr = new Date(b.timestamp).toLocaleString();
+                const itemCount = b.qboIds ? b.qboIds.length : 0;
+                html += `
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">
+                            <strong>${dateStr}</strong><br>
+                            <span style="font-size:0.75rem; color:#888;">${b.id}</span>
+                        </td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee; text-transform: capitalize;">
+                            ${b.tab} <span style="color:#aaa;">(${b.view})</span>
+                        </td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">${itemCount}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">
+                            <button onclick="window.deleteBatch('${b.id}', '${b.realmId}')" class="btn danger" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">Reverse / Delete</button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += `</tbody></table>`;
+            container.innerHTML = html;
+
+        } catch (error) {
+            console.error("Failed to load history", error);
+            container.innerHTML = `<p class="text-danger">Error loading batch history.</p>`;
+        }
+    }
+
+    async handleDeleteBatch(batchId, realmId) {
+        if (!confirm("Are you sure you want to delete this entire batch from QuickBooks? This cannot be undone.")) return;
+        
+        try {
+            const deleteQboBatch = httpsCallable(functions, 'deleteQboBatch');
+            document.getElementById('historyTableContainer').innerHTML = "<p>Deleting batch from QuickBooks... Please wait.</p>";
+            
+            const res = await deleteQboBatch({ batchId: batchId, realmId: realmId });
+            
+            alert(`Success: ${res.data.deletedCount} transactions were removed from QuickBooks.`);
+            this.loadBatchHistory(); 
+        } catch (err) {
+            alert(`Failed to delete batch: ${err.message}`);
+            this.loadBatchHistory(); 
+        }
     }
 }
