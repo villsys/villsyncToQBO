@@ -16,18 +16,23 @@
         .sidebar a { color: #adb5bd; text-decoration: none; padding: 1rem 1.5rem; border-left: 4px solid transparent; transition: all 0.2s; white-space: nowrap; }
         .sidebar a:hover, .sidebar a.active { background: #34495e; color: white; border-left-color: #27ae60; }
         .sidebar-header { padding: 0 1.5rem 1rem 1.5rem; font-size: 0.85rem; text-transform: uppercase; color: #6c757d; font-weight: bold; letter-spacing: 1px; white-space: nowrap; }
-        #app-root { flex: 1; overflow-y: auto; padding: 2rem; background: #e9ecef; }
+        #app-root { flex: 1; overflow-y: auto; padding: 1rem; background: #e9ecef; }
         
         /* Modal Styles */
         .modal-overlay { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
         .modal-content { background: white; padding: 2rem; border-radius: 8px; width: 80%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+
+        /* Mobile specific overrides for app-root */
+        @media (max-width: 768px) {
+            #app-root { padding: 0.25rem; }
+        }
     </style>
 </head>
 <body>
     <header class="navbar">
         <div class="logo-group">
             <button id="hamburgerBtn" class="hamburger">&#9776;</button>
-            <div class="logo">VilSync To QBO</div>
+            <div class="logo">VillSync To QBO</div>
         </div>
         <div class="header-right">
             <div id="qbo-name-display" class="qbo-company-name"></div>
