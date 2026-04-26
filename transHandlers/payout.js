@@ -25,7 +25,8 @@ export async function pushPayouts(data, config, context) {
         const amt = Math.abs(parseFloat(String(t.total || '0').replace(/,/g, '')));
 
         const signature = `PAYOUT_${exactTimeMs}_${t['settlement id']}_${amt.toFixed(2)}`;
-        const ledgerRef = doc(db, "users", currentUser.uid, "qbo_sync_ledger", signature);
+        // const ledgerRef = doc(db, "users", currentUser.uid, "qbo_sync_ledger", signature);
+        const ledgerRef = doc(db, "qbo_companies", config.realmId, "qbo_sync_ledger", signature);
         const ledgerSnap = await getDoc(ledgerRef);
         
         if (ledgerSnap.exists()) {
