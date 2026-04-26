@@ -20,8 +20,9 @@ export default class Shopify {
         this.depositAccount = "Shopify Clearing"; 
         this.startDate = "";
         this.endDate = "";
-        this.activeMainTab = "all";
-        this.activeSubTab = "table";
+        this.activePaymentMethod = "all"; 
+        this.activeMainTab = "all";       
+        this.activeSubTab = "table";      
         
         this.userRole = 'guest'; 
         this.userProfile = null;
@@ -83,9 +84,13 @@ export default class Shopify {
                     <button id="viewHistoryBtn" class="btn outline" style="background: white; color: #2c3e50; border: 1px solid #2c3e50;">View Batch History</button>
                 </div>
 
-                <div id="dynamicTabsContainer" class="tabs main-tabs desktop-scroll-row" style="border-bottom: 2px solid #27ae60; margin-bottom: 0; gap: 0;">
+                <div id="paymentTabsContainer" class="tabs payment-tabs desktop-scroll-row" style="border-bottom: 1px solid #ccc; margin-bottom: 5px; gap: 0; display: none;">
+                    <button class="tab active" data-paytab="all">All Gateways</button>
+                </div>
+
+                <div id="mainTabsContainer" class="tabs main-tabs desktop-scroll-row" style="border-bottom: 2px solid #27ae60; margin-bottom: 0; gap: 0;">
                     <button class="tab active" data-maintab="all">All Data</button>
-                    </div>
+                </div>
 
                 <div class="tabs sub-tabs desktop-scroll-row" style="background: #f8f9fa; padding-top: 5px; margin-bottom: 1rem;" id="subTabContainer">
                     <button class="tab active" data-subtab="table" style="font-size: 0.9rem; padding: 0.5rem 1rem;">Data Table View</button>
@@ -167,6 +172,17 @@ export default class Shopify {
         this.updateReadyStatus();
     }
 
+    attachPaymentTabListeners() {
+        document.querySelectorAll('.payment-tabs .tab').forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                document.querySelectorAll('.payment-tabs .tab').forEach(t => t.classList.remove('active'));
+                e.target.classList.add('active');
+                this.activePaymentMethod = e.target.dataset.paytab;
+                this.renderActiveView();
+            });
+        });
+    }
+
     attachMainTabListeners() {
         document.querySelectorAll('.main-tabs .tab').forEach(tab => {
             tab.addEventListener('click', (e) => {
@@ -177,15 +193,18 @@ export default class Shopify {
                 const ctrlPanel = document.getElementById('controlPanel');
                 const subTabs = document.getElementById('subTabContainer');
                 const statusBar = document.getElementById('pushStatusBar');
+                const payTabs = document.getElementById('paymentTabsContainer');
                 
                 if (this.activeMainTab === 'unmapped') {
                     ctrlPanel.style.display = 'flex';
                     subTabs.style.display = 'none';
                     statusBar.style.display = 'flex';
+                    payTabs.style.display = 'none'; // Unmapped ignores payment methods
                 } else {
                     ctrlPanel.style.display = 'flex';
                     subTabs.style.display = 'flex';
                     statusBar.style.display = 'flex';
+                    payTabs.style.display = 'flex';
                 }
                 this.renderActiveView();
             });
@@ -204,21 +223,30 @@ export default class Shopify {
     }
 
     renderDynamicTabs() {
-        const container = document.getElementById('dynamicTabsContainer');
-        let html = `<button class="tab ${this.activeMainTab === 'all' ? 'active' : ''}" data-maintab="all">All Data</button>`;
+        const payContainer = document.getElementById('paymentTabsContainer');
+        const mainContainer = document.getElementById('mainTabsContainer');
+
+        let payHtml = `<button class="tab ${this.activePaymentMethod === 'all' ? 'active' : ''}" data-paytab="all">All Gateways</button>`;
+        this.paymentMethods.forEach(method => {
+            payHtml += `<button class="tab ${this.activePaymentMethod === method ? 'active' : ''}" data-paytab="${method}">${method}</button>`;
+        });
+        payContainer.innerHTML = payHtml;
+        payContainer.style.display = 'flex';
+
+        let mainHtml = `<button class="tab ${this.activeMainTab === 'all' ? 'active' : ''}" data-maintab="all">All Data</button>`;
         
         if (this.fileType === 'orders') {
-            this.paymentMethods.forEach(method => {
-                html += `<button class="tab ${this.activeMainTab === method ? 'active' : ''}" data-maintab="${method}">${method}</button>`;
-            });
+            mainHtml += `<button class="tab ${this.activeMainTab === 'sales' ? 'active' : ''}" data-maintab="sales">Sales Receipts</button>`;
         } else if (this.fileType === 'payouts') {
-            this.paymentMethods.forEach(method => {
-                html += `<button class="tab ${this.activeMainTab === method ? 'active' : ''}" data-maintab="${method}">${method}</button>`;
-            });
+            mainHtml += `<button class="tab ${this.activeMainTab === 'payouts' ? 'active' : ''}" data-maintab="payouts">Payouts</button>`;
+            mainHtml += `<button class="tab ${this.activeMainTab === 'expenses' ? 'active' : ''}" data-maintab="expenses">Expenses</button>`;
+            mainHtml += `<button class="tab ${this.activeMainTab === 'deposits' ? 'active' : ''}" data-maintab="deposits">Deposits</button>`;
         }
         
-        html += `<button class="tab ${this.activeMainTab === 'unmapped' ? 'active' : ''}" data-maintab="unmapped" style="color: #e74c3c;">Unmapped</button>`;
-        container.innerHTML = html;
+        mainHtml += `<button class="tab ${this.activeMainTab === 'unmapped' ? 'active' : ''}" data-maintab="unmapped" style="color: #e74c3c;">Unmapped</button>`;
+        mainContainer.innerHTML = mainHtml;
+
+        this.attachPaymentTabListeners();
         this.attachMainTabListeners();
     }
 
@@ -280,6 +308,7 @@ export default class Shopify {
 
     getFilteredData() {
         let data = this.transactions;
+        
         if (this.startDate || this.endDate) {
             data = data.filter(t => {
                 const d = this.formatDateStr(t.dateTime); 
@@ -287,6 +316,10 @@ export default class Shopify {
                 if (this.endDate && d > this.endDate) return false;
                 return true;
             });
+        }
+
+        if (this.activePaymentMethod !== 'all') {
+            data = data.filter(t => t.paymentMethod === this.activePaymentMethod);
         }
 
         if (this.activeMainTab !== 'all' && this.activeMainTab !== 'unmapped') {
@@ -365,11 +398,12 @@ export default class Shopify {
                 ordersGroup[orderId] = {
                     lines: [],
                     subtotal: this.parseAmt(row['Subtotal']),
+                    total: this.parseAmt(row['Total']),
                     paymentMethod: method,
-                    financialStatus: (row['Financial Status'] || '').toLowerCase(),
                     shipping: this.parseAmt(row['Shipping']),
                     taxes: this.parseAmt(row['Taxes']),
                     discount: this.parseAmt(row['Discount Amount']),
+                    duties: this.parseAmt(row['Duties']),
                     paidAt: row['Paid at'] || row['Created at']
                 };
             }
@@ -377,13 +411,14 @@ export default class Shopify {
         });
 
         for (const [orderId, order] of Object.entries(ordersGroup)) {
-            let calculatedLineTotal = 0;
-            const pushType = order.financialStatus.includes('refund') ? 'refund' : 'sales';
+            let calculatedItemTotal = 0;
+            const pushType = 'sales'; // 1099-K compliance: all orders are sales receipts
 
+            // 1. Process Core Product Line Items
             order.lines.forEach(row => {
                 const qty = this.parseAmt(row['Lineitem quantity']);
                 const price = this.parseAmt(row['Lineitem price']);
-                calculatedLineTotal += (qty * price);
+                calculatedItemTotal += (qty * price);
 
                 const lineItemKey = "Order - Item Price";
                 
@@ -399,25 +434,124 @@ export default class Shopify {
                     dateTime: order.paidAt,
                     settlementId: '',
                     orderId: orderId,
-                    mainTabGrouping: order.paymentMethod,
+                    paymentMethod: order.paymentMethod, 
+                    mainTabGrouping: pushType,          
+                    qboPushType: pushType,              
                     category: (this.categoriesDict[lineItemKey] || {}).category || "",
-                    shipping: order.shipping,
-                    taxes: order.taxes,
-                    discount: order.discount,
-                    selected: false,
-                    qboPushType: pushType 
+                    selected: false
                 });
             });
 
-            const diff = Math.abs(Math.round(calculatedLineTotal * 100) - Math.round(order.subtotal * 100)) / 100;
+            // 2. Explode Shipping into its own row
+            if (order.shipping !== 0) {
+                const lineItemKey = "Order - Shipping";
+                this.transactions.push({
+                    uid: Date.now().toString(36) + Math.random().toString(36).substring(2),
+                    transactionType: 'Order',
+                    lineItem: lineItemKey,
+                    description: 'Shipping Collected',
+                    sku: 'SHIPPING',
+                    quantity: 1,
+                    rate: order.shipping,
+                    totalAmount: order.shipping,
+                    dateTime: order.paidAt,
+                    settlementId: '',
+                    orderId: orderId,
+                    paymentMethod: order.paymentMethod, 
+                    mainTabGrouping: pushType,          
+                    qboPushType: pushType,              
+                    category: (this.categoriesDict[lineItemKey] || {}).category || "",
+                    selected: false
+                });
+            }
+
+            // 3. Explode Taxes into its own row
+            if (order.taxes !== 0) {
+                const lineItemKey = "Order - Taxes";
+                this.transactions.push({
+                    uid: Date.now().toString(36) + Math.random().toString(36).substring(2),
+                    transactionType: 'Order',
+                    lineItem: lineItemKey,
+                    description: 'Taxes Collected',
+                    sku: 'TAX',
+                    quantity: 1,
+                    rate: order.taxes,
+                    totalAmount: order.taxes,
+                    dateTime: order.paidAt,
+                    settlementId: '',
+                    orderId: orderId,
+                    paymentMethod: order.paymentMethod, 
+                    mainTabGrouping: pushType,          
+                    qboPushType: pushType,              
+                    category: (this.categoriesDict[lineItemKey] || {}).category || "",
+                    selected: false
+                });
+            }
+
+            // 4. Explode Discounts into its own row (Negative Amount)
+            if (order.discount !== 0) {
+                const lineItemKey = "Order - Discount";
+                this.transactions.push({
+                    uid: Date.now().toString(36) + Math.random().toString(36).substring(2),
+                    transactionType: 'Order',
+                    lineItem: lineItemKey,
+                    description: 'Order Discount',
+                    sku: 'DISCOUNT',
+                    quantity: 1,
+                    rate: -Math.abs(order.discount),
+                    totalAmount: -Math.abs(order.discount),
+                    dateTime: order.paidAt,
+                    settlementId: '',
+                    orderId: orderId,
+                    paymentMethod: order.paymentMethod, 
+                    mainTabGrouping: pushType,          
+                    qboPushType: pushType,              
+                    category: (this.categoriesDict[lineItemKey] || {}).category || "",
+                    selected: false
+                });
+            }
+
+            // 5. Explode Duties into its own row
+            if (order.duties !== 0) {
+                const lineItemKey = "Order - Duties";
+                this.transactions.push({
+                    uid: Date.now().toString(36) + Math.random().toString(36).substring(2),
+                    transactionType: 'Order',
+                    lineItem: lineItemKey,
+                    description: 'Duties Collected',
+                    sku: 'DUTIES',
+                    quantity: 1,
+                    rate: order.duties,
+                    totalAmount: order.duties,
+                    dateTime: order.paidAt,
+                    settlementId: '',
+                    orderId: orderId,
+                    paymentMethod: order.paymentMethod, 
+                    mainTabGrouping: pushType,          
+                    qboPushType: pushType,              
+                    category: (this.categoriesDict[lineItemKey] || {}).category || "",
+                    selected: false
+                });
+            }
+
+            // AUDITOR VALIDATION: Sum(Items) + Shipping + Duties - Discount = Target Amount
+            const computedAmount = calculatedItemTotal + order.shipping + order.duties - order.discount;
+            let targetAmount = order.total;
+
+            // If Total includes taxes (computed + taxes = total), deduct taxes from target so formula balances strictly based on inputs
+            if (Math.abs((computedAmount + order.taxes) - order.total) < 0.05) {
+                targetAmount = order.total - order.taxes;
+            }
+
+            const diff = Math.abs(Math.round(computedAmount * 100) - Math.round(targetAmount * 100)) / 100;
             if (diff > 0.01) {
-                validationErrors.push(`Order ${orderId}: Computed Lines ($${calculatedLineTotal.toFixed(2)}) != Subtotal ($${order.subtotal.toFixed(2)})`);
+                validationErrors.push(`Order ${orderId}: Computed (${computedAmount.toFixed(2)}) != Target (${targetAmount.toFixed(2)})`);
             }
         }
 
         if (validationErrors.length > 0) {
             document.getElementById('syncQboBtn').disabled = true;
-            this.showAlert(`<strong>Validation Failed:</strong> Mismatch between Line Items and Subtotal detected in the following orders. You cannot push until this is corrected in the CSV.<br><br><span style="font-size:0.8rem; font-family:monospace;">${validationErrors.join('<br>')}</span>`, "danger");
+            this.showAlert(`<strong>Validation Failed:</strong> Mismatch between Line Items and Total detected in the following orders. You cannot push until this is corrected in the CSV.<br><br><span style="font-size:0.8rem; font-family:monospace;">${validationErrors.join('<br>')}</span>`, "danger");
         } else {
             document.getElementById('syncQboBtn').disabled = false;
         }
@@ -435,8 +569,7 @@ export default class Shopify {
 
         data.forEach(row => {
             const payoutId = row['Payout ID'] || row['Order'] || 'Unassigned';
-            // Explicitly grabbing the required Payment Method Name column per instructions
-            const method = row['Payment Method Name'] || row['Payment Method'] || 'Shopify Payments';
+            const method = row['Payment Method Name'] || row['Payment Method'] || row['Payment Provider'] || 'Shopify Payments';
             this.paymentMethods.add(method);
 
             const groupKey = `${method}_${payoutId}`;
@@ -451,7 +584,7 @@ export default class Shopify {
 
         for (const [groupKey, group] of Object.entries(payoutsGroup)) {
             const isPositiveNet = group.netSum >= 0;
-            const pushType = isPositiveNet ? 'payout' : 'expense';
+            const pushType = isPositiveNet ? 'payouts' : 'expenses';
 
             group.lines.forEach(row => {
                 const typeStr = row['Type'] || 'Unknown';
@@ -467,9 +600,9 @@ export default class Shopify {
                         lineItem: liAmount,
                         description: `${typeStr} amount for ${group.payoutId}`,
                         quantity: 1, rate: amt, totalAmount: amt, dateTime: row['Payout Date'] || row['Transaction Date'],
-                        settlementId: group.payoutId, orderId: row['Order'] || '', mainTabGrouping: group.method,
-                        category: (this.categoriesDict[liAmount] || {}).category || "", selected: false,
-                        qboPushType: pushType
+                        settlementId: group.payoutId, orderId: row['Order'] || '', 
+                        paymentMethod: group.method, mainTabGrouping: pushType, qboPushType: pushType,
+                        category: (this.categoriesDict[liAmount] || {}).category || "", selected: false
                     });
                 }
 
@@ -481,9 +614,9 @@ export default class Shopify {
                         lineItem: liFee,
                         description: `${typeStr} processing fee for ${group.payoutId}`,
                         quantity: 1, rate: reversedFee, totalAmount: reversedFee, dateTime: row['Payout Date'] || row['Transaction Date'],
-                        settlementId: group.payoutId, orderId: row['Order'] || '', mainTabGrouping: group.method,
-                        category: (this.categoriesDict[liFee] || {}).category || "", selected: false,
-                        qboPushType: pushType
+                        settlementId: group.payoutId, orderId: row['Order'] || '', 
+                        paymentMethod: group.method, mainTabGrouping: pushType, qboPushType: pushType,
+                        category: (this.categoriesDict[liFee] || {}).category || "", selected: false
                     });
                 }
             });
@@ -497,9 +630,9 @@ export default class Shopify {
                     lineItem: liDeposit,
                     description: `Bank draw for negative payout ${group.payoutId}`,
                     quantity: 1, rate: absNet, totalAmount: absNet, dateTime: group.date,
-                    settlementId: group.payoutId, orderId: '', mainTabGrouping: group.method,
-                    category: (this.categoriesDict[liDeposit] || {}).category || "", selected: false,
-                    qboPushType: 'deposit'
+                    settlementId: group.payoutId, orderId: '', 
+                    paymentMethod: group.method, mainTabGrouping: 'deposits', qboPushType: 'deposits',
+                    category: (this.categoriesDict[liDeposit] || {}).category || "", selected: false
                 });
             }
         }
@@ -529,12 +662,13 @@ export default class Shopify {
                 <th style="text-align: right;">Rate</th>
                 <th style="text-align: right;">Total</th>
                 <th>Date Paid</th>
+                <th>Gateway</th>
                 <th>Order/Settlement ID</th>
             </tr></thead><tbody>
         `;
 
         if (currentData.length === 0) {
-            html += `<tr><td colspan="11" style="text-align:center;">No data matches the current filters.</td></tr>`;
+            html += `<tr><td colspan="12" style="text-align:center;">No data matches the current filters.</td></tr>`;
         }
 
         currentData.forEach((t) => {
@@ -554,6 +688,7 @@ export default class Shopify {
                 <td style="text-align: right;">${t.rate.toFixed(2)}</td>
                 <td style="text-align: right; font-weight: bold;">${t.totalAmount.toFixed(2)}</td>
                 <td>${this.formatDateStr(t.dateTime)}</td>
+                <td><span style="font-size: 0.8rem; color:#888;">${t.paymentMethod}</span></td>
                 <td>${t.orderId || t.settlementId}</td>
             </tr>`;
         });
@@ -629,7 +764,7 @@ export default class Shopify {
                 </td>
                 <td><input type="text" id="unmap-desc-${i}" placeholder="Optional internal description" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
                 <td style="text-align:center;">
-                    <button class="btn" onclick="window.pushAndSaveUnmapped('${t.lineItem}', ${i})">Push to QBO & Save</button>
+                    <button class="btn" style="background:#27ae60; color:white; font-weight:bold; padding:0.4rem 1rem;" onclick="window.pushAndSaveUnmapped('${t.lineItem}', ${i})">Push to QBO & Save</button>
                 </td>
             </tr>`;
         });
@@ -698,7 +833,7 @@ export default class Shopify {
             return this.showAlert("Monthly push limit reached (10/10). Please subscribe in the UI to continue pushing data.", "danger");
         }
 
-        if (this.activeMainTab === 'all') return this.showAlert("Please select a specific Payment Method tab to push.", "warning");
+        if (this.activeMainTab === 'all' || this.activePaymentMethod === 'all') return this.showAlert("Please select a specific Payment Method AND a specific Transaction tab (Sales, Payouts, etc.) to push.", "warning");
         const qboSelect = document.getElementById('qboSelect');
         if (!qboSelect || !qboSelect.value) return this.showAlert("Please connect and select a QBO account first.", "warning");
 
@@ -735,15 +870,12 @@ export default class Shopify {
             if (this.activeSubTab === 'table') {
                 if (this.fileType === 'orders') {
                     const salesData = visibleData.filter(t => t.qboPushType === 'sales');
-                    const refundsData = visibleData.filter(t => t.qboPushType === 'refund');
-
                     if (salesData.length > 0) pushedIds = pushedIds.concat(await pushShopifySalesReceipts(salesData, config, this));
-                    if (refundsData.length > 0) pushedIds = pushedIds.concat(await pushShopifyRefunds(refundsData, config, this));
                     
                 } else if (this.fileType === 'payouts') {
-                    const payoutsData = visibleData.filter(t => t.qboPushType === 'payout');
-                    const expensesData = visibleData.filter(t => t.qboPushType === 'expense');
-                    const depositsData = visibleData.filter(t => t.qboPushType === 'deposit');
+                    const payoutsData = visibleData.filter(t => t.qboPushType === 'payouts');
+                    const expensesData = visibleData.filter(t => t.qboPushType === 'expenses');
+                    const depositsData = visibleData.filter(t => t.qboPushType === 'deposits');
 
                     if (payoutsData.length > 0) pushedIds = pushedIds.concat(await pushShopifyPayouts(payoutsData, config, this));
                     if (expensesData.length > 0) pushedIds = pushedIds.concat(await pushShopifyExpenses(expensesData, config, this));
