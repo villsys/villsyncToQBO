@@ -44,7 +44,7 @@ export async function pushDeposits(data, config, context) {
         });
 
         const signature = `DEP_${exactTimeMs}_${groupData.settlementId}_${netAmount.toFixed(2)}`;
-        // const ledgerRef = doc(db, "users", currentUser.uid, "qbo_sync_ledger", signature);
+        /// const ledgerRef = doc(db, "users", currentUser.uid, "qbo_sync_ledger", signature);
         const ledgerRef = doc(db, "qbo_companies", config.realmId, "qbo_sync_ledger", signature);
         const ledgerSnap = await getDoc(ledgerRef);
         
