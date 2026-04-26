@@ -772,61 +772,44 @@ export default class Shopify {
         html += `</tbody></table></div>`;
         document.getElementById('tabContent').innerHTML = html;
 
-        window.pushAndSaveUnmapped = async (lineItem, index) => {
+        window.pushAndSaveMapping = async (lineItem, index, oldCat) => {
             const catVal = document.getElementById(`unmap-cat-${index}`).value.trim();
             const typeVal = document.getElementById(`unmap-type-${index}`).value;
             const descVal = document.getElementById(`unmap-desc-${index}`).value.trim();
             const btn = event.target;
 
-            if (!catVal) { 
-                this.showAlert("Please enter a Category Name (QBO Account Name).", "danger"); 
-                return; 
-            }
-            
+            if (!catVal) return this.showAlert("Category Name required.", "danger"); 
             const qboSelect = document.getElementById('qboSelect');
-            if (!qboSelect || !qboSelect.value) {
-                this.showAlert("Please connect and select a QBO account from the top menu first.", "warning");
-                return;
-            }
+            if (!qboSelect || !qboSelect.value) return this.showAlert("Select QBO account first.", "warning");
 
-            btn.innerText = "Pushing...";
-            btn.disabled = true;
+            btn.innerText = "Pushing..."; btn.disabled = true;
+            const realmId = qboSelect.value;
 
             try {
                 const getOrCreateQboAccount = httpsCallable(functions, 'getOrCreateQboAccount');
+                await getOrCreateQboAccount({ accountName: catVal, realmId: realmId, accountType: typeVal, description: descVal });
+
+                const batch = writeBatch(db);
+                const ts = new Date().toISOString();
                 
-                await getOrCreateQboAccount({
-                    accountName: catVal,
-                    realmId: qboSelect.value,
-                    accountType: typeVal,
-                    description: descVal
-                });
+                const mapRef = doc(db, `qbo_companies/${realmId}/category_mappings`, lineItem);
+                batch.set(mapRef, { lineItem: lineItem, category: catVal, accountType: typeVal, description: descVal, modifiedBy: currentUser.email, modifiedAt: ts }, { merge: true });
 
-                await setDoc(doc(db, "category", lineItem), {
-                    lineItem: lineItem,
-                    category: catVal,
-                    accountType: typeVal,
-                    description: descVal
-                }, { merge: true });
+                const logRef = doc(collection(db, `qbo_companies/${realmId}/audit_logs`));
+                batch.set(logRef, { action: oldCat ? "UPDATE" : "CREATE", lineItem: lineItem, oldCategory: oldCat || "UNMAPPED", newCategory: catVal, modifiedBy: currentUser.email, modifiedAt: ts });
 
-                if (!this.categoriesDict[lineItem]) this.categoriesDict[lineItem] = {};
-                this.categoriesDict[lineItem].category = catVal;
-                this.categoriesDict[lineItem].accountType = typeVal;
-                
-                this.transactions.forEach(t => {
-                    if (t.lineItem === lineItem) t.category = catVal;
-                });
+                await batch.commit();
 
-                this.showAlert(`Successfully created "${catVal}" as ${typeVal} in QBO and mapped it!`, "success");
+                this.categoriesDict[lineItem] = { category: catVal, accountType: typeVal, source: 'company' };
+                this.transactions.forEach(t => { if (t.lineItem === lineItem) t.category = catVal; });
+
+                this.showAlert(`Saved "${catVal}" to Company Mappings!`, "success");
                 this.renderActiveView(); 
-
             } catch (err) {
                 this.showAlert(err.message, "danger");
-                btn.innerText = "Push to QBO & Save";
-                btn.disabled = false;
+                btn.innerText = "Push & Save"; btn.disabled = false;
             }
         };
-    }
 
     async handlePushToQbo() {
         if (this.userRole === 'guest' && this.userProfile.monthlyBatchesPushed >= 10) {
