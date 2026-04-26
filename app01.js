@@ -29,9 +29,8 @@ class UnderDevelopmentView {
 const routes = {
     '#/': () => import('./home.js').then(m => m.default),
     '#/admin': () => import('./admin.js').then(m => m.default),
-    '#/shopify': () => Promise.resolve(class extends UnderDevelopmentView { constructor() { super("Shopify"); } }),
+    '#/shopify': () => import('./shopify.js').then(m => m.default),
     '#/paypal': () => Promise.resolve(class extends UnderDevelopmentView { constructor() { super("PayPal"); } }),
-    '#/ebay': () => Promise.resolve(class extends UnderDevelopmentView { constructor() { super("eBay"); } }),
     '#/bank': () => Promise.resolve(class extends UnderDevelopmentView { constructor() { super("Bank Transactions"); } }),
     '#/creditcard': () => Promise.resolve(class extends UnderDevelopmentView { constructor() { super("Credit Card Transactions"); } })
 };
@@ -52,7 +51,7 @@ async function router() {
     if (typeof currentUser === 'undefined' || !currentUser) {
         appRoot.innerHTML = `
             <div style="padding: 60px 20px; text-align: center; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin: 20px;">
-                <h2 style="color: #2c3e50; margin-bottom: 15px;">Welcome to VilSync To QBO</h2>
+                <h2 style="color: #2c3e50; margin-bottom: 15px;">Welcome to VillSync To QBO</h2>
                 <p style="color: #6c757d; font-size: 1.1em;">Please click "Login" in the top right to access your integration modules and connect to QuickBooks.</p>
             </div>
         `;
