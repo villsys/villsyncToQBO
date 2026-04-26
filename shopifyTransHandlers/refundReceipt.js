@@ -49,7 +49,7 @@ export async function pushShopifyRefunds(data, config, context) {
         });
 
         const signature = `SHP_REFUND_${exactTimeMs}_${refundData.settlementId}_${netAmount.toFixed(2)}`;
-        // const ledgerRef = doc(db, "users", currentUser.uid, "qbo_sync_ledger", signature);
+        /// const ledgerRef = doc(db, "users", currentUser.uid, "qbo_sync_ledger", signature);
         const ledgerRef = doc(db, "qbo_companies", config.realmId, "qbo_sync_ledger", signature);
         const ledgerSnap = await getDoc(ledgerRef);
         
