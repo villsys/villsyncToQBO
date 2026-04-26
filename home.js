@@ -1,5 +1,5 @@
 import { db, functions } from './auth.js'; 
-import { collection, doc, getDoc, setDoc, getDocs } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+import { collection, doc, getDoc, setDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-functions.js";
 import { getStorage, ref, uploadBytes } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-storage.js";
 import { currentUser } from './app.js';
@@ -120,7 +120,7 @@ export default class Home {
                     <button class="tab" data-maintab="expenses">Expenses</button>
                     <button class="tab" data-maintab="deposits">Deposits</button>
                     <button class="tab" data-maintab="payouts">Payouts</button>
-                    <button class="tab" data-maintab="unmapped" style="color: var(--danger);">Unmapped</button>
+                    <button class="tab" data-maintab="unmapped" style="color: var(--danger);">Mapping</button>
                     
                     <div style="margin-left: auto; display: flex; flex: 0 0 auto;">
                         <button class="tab" data-maintab="subscription" style="color: #7f8c8d; border-left: 2px solid #dee2e6;">💎 Subscriptions</button>
@@ -134,7 +134,7 @@ export default class Home {
                 </div>
 
                 <div id="tabContent">
-                    <p style="padding: 2rem; text-align: center; color: #7f8c8d;">Loading workspace...</p>
+                    <p style="padding: 2rem; text-align: center; color: #7f8c8d;">Select a QBO Account and upload an Amazon Date Range Report to begin.</p>
                 </div>
             </div>
 
@@ -153,6 +153,14 @@ export default class Home {
 
     async afterRender() {
         await this.checkUserRoleAndLimits();
+        
+        const qboSelect = document.getElementById('qboSelect');
+        if (qboSelect) {
+            qboSelect.addEventListener('change', async () => {
+                await this.loadCategories();
+                if (this.transactions.length > 0) this.renderActiveView();
+            });
+        }
         await this.loadCategories();
         
         document.getElementById('csvFile').addEventListener('change', e => this.handleFileSelect(e));
@@ -193,7 +201,6 @@ export default class Home {
                     subTabs.style.display = 'none';
                     statusBar.style.display = 'none';
                 } else if (this.activeMainTab === 'unmapped') {
-                    // Because we added desktop-scroll-row, we restore to flex
                     ctrlPanel.style.display = 'flex';
                     subTabs.style.display = 'none';
                     statusBar.style.display = 'flex';
@@ -270,8 +277,39 @@ export default class Home {
             document.getElementById('adminTabBtn').style.display = 'inline-block';
         }
         
-        document.getElementById('tabContent').innerHTML = `<p style="padding: 2rem; text-align: center; color: #7f8c8d;">Upload an Amazon Date Range Report to begin.</p>`;
+        document.getElementById('tabContent').innerHTML = `<p style="padding: 2rem; text-align: center; color: #7f8c8d;">Select a QBO Account and upload an Amazon Date Range Report to begin.</p>`;
         this.updateReadyStatus();
+    }
+
+    async loadCategories() {
+        this.categoriesDict = {};
+        
+        // 1. Load Global Defaults
+        try {
+            const defaultSnap = await getDocs(collection(db, "category"));
+            defaultSnap.forEach(doc => { 
+                this.categoriesDict[doc.id] = { 
+                    category: doc.data().category, 
+                    accountType: doc.data().accountType || "",
+                    source: 'default'
+                }; 
+            });
+        } catch (e) {}
+
+        // 2. Load Tenant Specific Overrides
+        const qboSelect = document.getElementById('qboSelect');
+        if (qboSelect && qboSelect.value && currentUser) {
+            try {
+                const companySnap = await getDocs(collection(db, `qbo_companies/${qboSelect.value}/category_mappings`));
+                companySnap.forEach(doc => {
+                    this.categoriesDict[doc.id] = {
+                        category: doc.data().category,
+                        accountType: doc.data().accountType || "",
+                        source: 'company'
+                    };
+                });
+            } catch (e) {}
+        }
     }
 
     renderActiveView() {
@@ -281,7 +319,7 @@ export default class Home {
         if (this.transactions.length === 0) return;
         this.updateReadyStatus();
 
-        if (this.activeMainTab === 'unmapped') return this.renderUnmappedTable();
+        if (this.activeMainTab === 'unmapped') return this.renderMappingTable();
         if (this.activeSubTab === 'table') return this.renderTable();
         this.renderJournal();
     }
@@ -422,9 +460,19 @@ export default class Home {
         statusText.style.textShadow = "none";
 
         if (this.activeMainTab === 'unmapped') {
-            const unmappedCount = new Set(this.transactions.filter(t => !t.category).map(t => t.lineItem)).size;
-            statusText.innerText = `${unmappedCount} unmapped items to resolve.`;
-            statusText.style.color = "#e74c3c";
+            let mappingCount = 0;
+            const seen = new Set();
+            this.transactions.forEach(t => {
+                const dictEntry = this.categoriesDict[t.lineItem];
+                const isUnmapped = !t.category;
+                const isDefault = dictEntry && dictEntry.source === 'default';
+                if ((isUnmapped || isDefault) && !seen.has(t.lineItem)) {
+                    seen.add(t.lineItem);
+                    mappingCount++;
+                }
+            });
+            statusText.innerText = `${mappingCount} items require company-specific mapping.`;
+            statusText.style.color = mappingCount > 0 ? "#e74c3c" : "#27ae60";
             if (highVolumeBanner) highVolumeBanner.style.display = 'none';
             return;
         }
@@ -517,307 +565,6 @@ export default class Home {
         return data;
     }
 
-    async handlePushToQbo() {
-        if (this.userRole === 'guest' && this.userProfile.monthlyBatchesPushed >= 10) {
-            return this.showAlert("Monthly push limit reached (10/10). Please subscribe in the UI to continue pushing data.", "danger");
-        }
-
-        if (this.activeMainTab === 'all') return this.showAlert("Please select a specific transaction tab (Sales, Refunds, etc.) to push.", "warning");
-        const qboSelect = document.getElementById('qboSelect');
-        if (!qboSelect || !qboSelect.value) return this.showAlert("Please connect and select a QBO account first.", "warning");
-
-        // ONLY PROCESS UNCHECKED ROWS
-        const visibleData = this.getFilteredAndPartitionedData().filter(t => !t.selected);
-        if (visibleData.length === 0) return this.showAlert("No unchecked transactions in the current view to push.", "warning");
-
-        const pushBtn = document.getElementById('syncQboBtn');
-        const statusText = document.getElementById('pushStatusText');
-        const originalText = pushBtn.innerText;
-        
-        pushBtn.innerText = "Provisioning & Pushing...";
-        pushBtn.disabled = true;
-        
-        if(statusText) {
-            statusText.innerText = "Initializing push connection...";
-            statusText.style.color = "#ffffff"; 
-            statusText.style.textShadow = "1px 1px 3px rgba(0,0,0,0.6)";
-        }
-
-        let wakeLock = null;
-        try {
-            if ('wakeLock' in navigator) {
-                wakeLock = await navigator.wakeLock.request('screen');
-            }
-        } catch (err) {}
-
-        try {
-            const config = {
-                realmId: qboSelect.value,
-                depositAccountName: this.depositAccount && this.depositAccount.trim() !== "" ? this.depositAccount : "Payments to Deposit",
-                functions: functions,
-                endDate: this.endDate,
-                batchId: `batch_${Date.now()}` 
-            };
-
-            let pushedIds = [];
-
-            if (this.activeSubTab === 'table') {
-                if (this.activeMainTab === 'sales') pushedIds = await pushSalesReceipts(visibleData, config, this);
-                else if (this.activeMainTab === 'refunds') pushedIds = await pushRefundReceipts(visibleData, config, this);
-                else if (this.activeMainTab === 'deposits') pushedIds = await pushDeposits(visibleData, config, this);
-                else if (this.activeMainTab === 'expenses') pushedIds = await pushExpenses(visibleData, config, this);
-                else if (this.activeMainTab === 'payouts') pushedIds = await pushPayouts(visibleData, config, this);
-            } else {
-                pushedIds = await this.pushStandardJournalEntry(visibleData, config);
-            }
-
-            if (pushedIds && pushedIds.length > 0) {
-                await setDoc(doc(db, "users", currentUser.uid, "transPushedToQB", config.batchId), {
-                    timestamp: new Date().toISOString(),
-                    realmId: config.realmId,
-                    tab: this.activeMainTab,
-                    view: this.activeSubTab,
-                    qboIds: pushedIds
-                });
-
-                if (this.userRole === 'guest') {
-                    this.userProfile.monthlyBatchesPushed++;
-                    await setDoc(doc(db, "users", currentUser.uid, "profile", "billing"), {
-                        monthlyBatchesPushed: this.userProfile.monthlyBatchesPushed
-                    }, { merge: true });
-                    this.updateReadyStatus(); 
-                }
-                
-                if (statusText) {
-                    statusText.innerText = `Push completed successfully! ${pushedIds.length} transactions saved to QBO.`;
-                }
-            } else {
-                if (statusText) {
-                    statusText.innerText = `All selected transactions were identified as duplicates and skipped.`;
-                    statusText.style.color = "#e67e22"; 
-                    statusText.style.textShadow = "none";
-                    document.getElementById('pushProgressFill').style.width = '0%';
-                }
-            }
-
-        } catch (error) {
-            console.error("Push failed:", error);
-            this.showAlert(error.message || "Failed to push to QBO. See console.", "danger");
-            if(statusText) {
-                statusText.innerText = "Status: Push failed. Check alerts.";
-                statusText.style.color = "#e74c3c";
-                statusText.style.textShadow = "none";
-                document.getElementById('pushProgressFill').style.width = '0%';
-            }
-        } finally {
-            if (wakeLock !== null) wakeLock.release().catch(()=>{});
-            pushBtn.innerText = originalText;
-            pushBtn.disabled = false;
-        }
-    }
-
-    async pushStandardJournalEntry(visibleData, config) {
-        const getOrCreateQboAccount = httpsCallable(config.functions, 'getOrCreateQboAccount');
-        const pushJournalEntry = httpsCallable(config.functions, 'pushJournalEntry');
-
-        let depId;
-        const depResponse = await getOrCreateQboAccount({ accountName: config.depositAccountName, realmId: config.realmId, accountType: "Bank" });
-        depId = depResponse.data.id;
-
-        let pushedIds = [];
-
-        if (this.activeMainTab === 'payouts') {
-            const totalTxns = visibleData.length;
-            const totalLines = visibleData.length;
-            let txnsPushed = 0;
-            let linesPushed = 0;
-
-            for (const t of visibleData) {
-                if (!t.category) throw new Error("Missing Categories: Please map all payout line items.");
-                const amt = this.parseAmt(t.total);
-                if (amt === 0) continue;
-
-                const catResponse = await getOrCreateQboAccount({ accountName: t.category, realmId: config.realmId });
-                const qboId = catResponse.data.id;
-
-                const individualLines = [];
-                if (amt < 0) {
-                    individualLines.push({ postingType: "Debit", amount: Math.abs(amt), qboAccountId: qboId, description: t.lineItem });
-                    individualLines.push({ postingType: "Credit", amount: Math.abs(amt), qboAccountId: depId, description: "Payout Transfer Offset" });
-                } else {
-                    individualLines.push({ postingType: "Credit", amount: amt, qboAccountId: qboId, description: t.lineItem });
-                    individualLines.push({ postingType: "Debit", amount: amt, qboAccountId: depId, description: "Payout Transfer Offset" });
-                }
-
-                const tDate = t['date/time'] ? this.getAmazonDateStr(t['date/time']) : null;
-                const res = await pushJournalEntry({ realmId: config.realmId, lines: individualLines, txnDate: tDate, privateNote: `VilBooks Transfer ID: ${t['settlement id'] || 'Manual'}` });
-                pushedIds.push({ type: "JournalEntry", id: res.data.qboResponseId });
-                
-                // Write signature to prevent duplicates later
-                const exactTimeMs = t['date/time'] ? new Date(t['date/time']).getTime() : Date.now();
-                const signature = `PAYOUT_${exactTimeMs}_${t['settlement id']}_${Math.abs(amt).toFixed(2)}`;
-                await setDoc(doc(db, "users", currentUser.uid, "qbo_sync_ledger", signature), { batchId: config.batchId, qboId: res.data.qboResponseId, timestamp: new Date().toISOString() });
-                
-                txnsPushed++;
-                linesPushed++;
-                this.updatePushProgress(linesPushed, txnsPushed, totalLines, totalTxns, 'payout');
-            }
-            this.showAlert(`Success! ${visibleData.length} Individual Payout Entries created in QBO.`, "success");
-        } else {
-            let summary = {};
-            let netDeposit = 0;
-            let missingCats = false;
-
-            visibleData.forEach(t => {
-                if (!t.category) missingCats = true;
-                const amt = this.parseAmt(t.total);
-                const key = t.lineItem || "UNCATEGORIZED"; 
-                if (!summary[key]) summary[key] = { amt: 0, catName: t.category };
-                summary[key].amt += amt;
-                netDeposit += amt;
-            });
-
-            if (missingCats) throw new Error("Missing Categories: Please map all line items before pushing.");
-
-            const linesToPush = [];
-            if (netDeposit > 0) {
-                linesToPush.push({ postingType: "Debit", amount: netDeposit, qboAccountId: depId, description: `Total ${this.activeMainTab}` });
-            } else if (netDeposit < 0) {
-                linesToPush.push({ postingType: "Credit", amount: Math.abs(netDeposit), qboAccountId: depId, description: `Total ${this.activeMainTab}` });
-            }
-
-            for (const lineKey of Object.keys(summary)) {
-                const amt = summary[lineKey].amt;
-                if (amt === 0) continue;
-
-                const catResponse = await getOrCreateQboAccount({ accountName: summary[lineKey].catName, realmId: config.realmId });
-                if (amt < 0) linesToPush.push({ postingType: "Debit", amount: Math.abs(amt), qboAccountId: catResponse.data.id, description: lineKey });
-                else linesToPush.push({ postingType: "Credit", amount: amt, qboAccountId: catResponse.data.id, description: lineKey });
-            }
-
-            let summaryDateStr = config.endDate;
-            if (!summaryDateStr) {
-                const dates = visibleData.map(t => new Date(t['date/time']).getTime()).filter(n => !isNaN(n));
-                if (dates.length > 0) summaryDateStr = this.getAmazonDateStr(new Date(Math.max(...dates)).toISOString());
-            }
-
-            const response = await pushJournalEntry({ realmId: config.realmId, lines: linesToPush, txnDate: summaryDateStr, privateNote: `Imported via VilBooks - Tab: ${this.activeMainTab.toUpperCase()}` });
-            if (response.data.success) {
-                this.showAlert(`Success! ${this.activeMainTab.toUpperCase()} Summary Journal Entry created in QBO.`, "success");
-                pushedIds.push({ type: "JournalEntry", id: response.data.qboResponseId });
-                this.updatePushProgress(visibleData.length, 1, visibleData.length, 1, 'journal entry');
-                
-                // --- WRITE INDIVIDUAL SIGNATURES FOR THE JOURNAL ENTRY ---
-                // This ensures that future uploads will detect these lines as duplicates
-                const groups = {};
-                visibleData.forEach(t => {
-                    const oId = t['order id'] || t.uid;
-                    const dateStamp = t['date/time'] || 'nodate';
-                    const settlementId = t['settlement id'] || 'nosettlement';
-                    const groupKey = `${oId}_${dateStamp}_${settlementId}`;
-                    if (!groups[groupKey]) groups[groupKey] = { date: t['date/time'], settlementId: t['settlement id'], lines: [] };
-                    groups[groupKey].lines.push(t);
-                });
-                
-                for (const groupData of Object.values(groups)) {
-                    const exactTimeMs = groupData.date ? new Date(groupData.date).getTime() : Date.now();
-                    let grpAmt = 0;
-                    groupData.lines.forEach(l => grpAmt += Math.abs(this.parseAmt(l.total)));
-                    let prefix = { 'sales': "SALES", 'refunds': "REFUND", 'expenses': "EXP", 'deposits': "DEP" }[this.activeMainTab] || "JRNL";
-                    const signature = `${prefix}_${exactTimeMs}_${groupData.settlementId}_${grpAmt.toFixed(2)}`;
-                    await setDoc(doc(db, "users", currentUser.uid, "qbo_sync_ledger", signature), { batchId: config.batchId, qboId: response.data.qboResponseId, timestamp: new Date().toISOString() });
-                }
-            }
-        }
-        return pushedIds;
-    }
-
-    async loadBatchHistory() {
-        const container = document.getElementById('historyTableContainer');
-        container.innerHTML = "<p>Loading history...</p>";
-
-        try {
-            const snap = await getDocs(collection(db, "users", currentUser.uid, "transPushedToQB"));
-            let batches = [];
-            snap.forEach(doc => batches.push({ id: doc.id, ...doc.data() }));
-            batches.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-            if (batches.length === 0) {
-                container.innerHTML = "<p>No batches pushed yet.</p>";
-                return;
-            }
-
-            let html = `
-                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
-                    <thead style="background: #f8f9fa;">
-                        <tr>
-                            <th style="padding: 10px; border-bottom: 2px solid #ddd;">Date Pushed</th>
-                            <th style="padding: 10px; border-bottom: 2px solid #ddd;">Tab / View</th>
-                            <th style="padding: 10px; border-bottom: 2px solid #ddd;">Items Created</th>
-                            <th style="padding: 10px; border-bottom: 2px solid #ddd; text-align: center;">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-
-            batches.forEach(b => {
-                const dateStr = new Date(b.timestamp).toLocaleString();
-                const itemCount = b.qboIds ? b.qboIds.length : 0;
-                
-                html += `
-                    <tr>
-                        <td style="padding: 10px; border-bottom: 1px solid #eee;">
-                            <strong>${dateStr}</strong><br>
-                            <span style="font-size:0.75rem; color:#888;">${b.id}</span>
-                        </td>
-                        <td style="padding: 10px; border-bottom: 1px solid #eee; text-transform: capitalize;">
-                            ${b.tab} <span style="color:#aaa;">(${b.view})</span>
-                        </td>
-                        <td style="padding: 10px; border-bottom: 1px solid #eee;">${itemCount}</td>
-                        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">
-                            <button onclick="window.deleteBatch('${b.id}', '${b.realmId}')" class="btn danger" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">Reverse / Delete</button>
-                        </td>
-                    </tr>
-                `;
-            });
-
-            html += `</tbody></table>`;
-            container.innerHTML = html;
-
-        } catch (error) {
-            console.error("Failed to load history", error);
-            container.innerHTML = `<p class="text-danger">Error loading batch history.</p>`;
-        }
-    }
-
-    async handleDeleteBatch(batchId, realmId) {
-        if (!confirm("Are you sure you want to delete this entire batch from QuickBooks? This cannot be undone.")) return;
-        
-        try {
-            const deleteQboBatch = httpsCallable(functions, 'deleteQboBatch');
-            document.getElementById('historyTableContainer').innerHTML = "<p>Deleting batch from QuickBooks... Please wait.</p>";
-            
-            const res = await deleteQboBatch({ batchId: batchId, realmId: realmId });
-            
-            alert(`Success: ${res.data.deletedCount} transactions were removed from QuickBooks.`);
-            this.loadBatchHistory(); 
-        } catch (err) {
-            alert(`Failed to delete batch: ${err.message}`);
-            this.loadBatchHistory(); 
-        }
-    }
-
-    async loadCategories() {
-        const snap = await getDocs(collection(db, "category"));
-        snap.forEach(doc => { 
-            this.categoriesDict[doc.id] = {
-                category: doc.data().category,
-                accountType: doc.data().accountType || "",
-                description: doc.data().description || ""
-            }; 
-        });
-    }
-
     showAlert(message, type = "warning") {
         const box = document.getElementById('alertBox');
         box.innerHTML = message;
@@ -833,35 +580,66 @@ export default class Home {
         const file = e.target.files[0];
         if (!file) return;
 
+        const qboSelect = document.getElementById('qboSelect');
+        if (!qboSelect || !qboSelect.value) {
+            this.showAlert("<strong>Action Required:</strong> Please connect and select a QBO account from the top right menu before uploading a file.", "danger");
+            e.target.value = "";
+            return;
+        }
+
         if (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
             this.showAlert("<strong>Format Error:</strong> You uploaded an Excel workbook (.xlsx). Please save it as a <strong>CSV</strong> file before uploading.", "danger");
             e.target.value = "";
             return;
         }
 
-        const fileDocRef = doc(db, "transactionFiles", file.name);
-        const fileDocSnap = await getDoc(fileDocRef);
-        if (fileDocSnap.exists()) {
-            const uploadDate = new Date(fileDocSnap.data().dateTimeUploaded).toLocaleDateString();
-            const proceed = confirm(`DUPLICATE WARNING: "${file.name}" was already uploaded on ${uploadDate}.\n\nProcess again?`);
-            if (!proceed) { e.target.value = ""; return; }
-        }
+        const realmId = qboSelect.value;
+        const fileDocRef = doc(db, `qbo_companies/${realmId}/transactionFiles`, file.name);
+        try {
+            const fileDocSnap = await getDoc(fileDocRef);
+            if (fileDocSnap.exists()) {
+                const uploadDate = new Date(fileDocSnap.data().dateTimeUploaded).toLocaleDateString();
+                const proceed = confirm(`DUPLICATE WARNING: "${file.name}" was already uploaded to this QBO Company on ${uploadDate}.\n\nProcess again?`);
+                if (!proceed) { e.target.value = ""; return; }
+            }
+        } catch (err) {}
 
-        this.parseFileAndLogRecord(file);
+        this.parseFileAndLogRecord(file, realmId);
     }
 
-    parseFileAndLogRecord(file) {
+    parseFileAndLogRecord(file, realmId) {
         Papa.parse(file, {
             header: true,
             skipEmptyLines: true,
             complete: async (results) => {
-                await this.logFileRecord(file);
-                await this.parseData(results.data, true);
+                await this.logFileRecord(file, realmId);
+                await this.parseData(results.data);
             }
         });
     }
 
-    async parseData(data, isNew) {
+    async logFileRecord(file, realmId) {
+        let status = "Local Render Only";
+        if (currentUser && db.app) {
+            try {
+                const storage = getStorage(db.app);
+                const fileRef = ref(storage, `qbo_companies/${realmId}/transactions/${file.name}`);
+                await uploadBytes(fileRef, file);
+                status = "Uploaded to Storage";
+            } catch (e) {
+                status = "Storage Failed - Bypass Used";
+            }
+        }
+        try {
+            await setDoc(doc(db, `qbo_companies/${realmId}/transactionFiles`, file.name), {
+                dateTimeUploaded: new Date().toISOString(),
+                uploadedBy: currentUser ? currentUser.email : "Guest",
+                storageStatus: status
+            });
+        } catch (e) {}
+    }
+
+    async parseData(data) {
         const isGuest = !this.userProfile || this.userProfile.role === 'guest';
         if (isGuest && data.length > 10) {
             data = data.slice(0, 10);
@@ -953,23 +731,23 @@ export default class Home {
         this.transactions = expandedTransactions;
         document.getElementById('syncQboBtn').disabled = false;
         
-        // Check for duplicates before rendering
         await this.checkForDuplicates();
         this.renderActiveView();
     }
 
     async checkForDuplicates() {
-        if (!currentUser) return;
+        const qboSelect = document.getElementById('qboSelect');
+        if (!currentUser || !qboSelect || !qboSelect.value) return;
+        const realmId = qboSelect.value;
         
         try {
-            const ledgerSnap = await getDocs(collection(db, "users", currentUser.uid, "qbo_sync_ledger"));
+            const ledgerSnap = await getDocs(collection(db, `qbo_companies/${realmId}/qbo_sync_ledger`));
             const existingSigs = new Set();
             ledgerSnap.forEach(d => existingSigs.add(d.id));
 
             let duplicateCount = 0;
             const groups = { sales: {}, refunds: {}, expenses: {}, deposits: {}, payouts: {} };
 
-            // Group all parsed transactions to build signatures
             this.transactions.forEach(t => {
                 const oId = t['order id'] || t.uid;
                 const dateStamp = t['date/time'] || 'nodate';
@@ -991,7 +769,6 @@ export default class Home {
                 }
             });
 
-            // Compare signatures
             for (const [tab, tabGroups] of Object.entries(groups)) {
                 if (tab === 'payouts') {
                     for (const groupData of Object.values(tabGroups)) {
@@ -1033,40 +810,6 @@ export default class Home {
         }
     }
 
-    async logFileRecord(file) {
-        let status = "Local Render Only";
-        if (currentUser && db.app) {
-            try {
-                const storage = getStorage(db.app);
-                const fileRef = ref(storage, `transactions/${file.name}`);
-                await uploadBytes(fileRef, file);
-                status = "Uploaded to Storage";
-            } catch (e) {
-                status = "Storage Failed - Bypass Used";
-            }
-        }
-        try {
-            await setDoc(doc(db, "transactionFiles", file.name), {
-                dateTimeUploaded: new Date().toISOString(),
-                uploadedBy: currentUser ? currentUser.email : "Guest",
-                storageStatus: status
-            });
-        } catch (e) {}
-    }
-
-    async updateCategory(lineItem, newCategory) {
-        if(!newCategory || newCategory.trim() === "") return;
-        try {
-            await setDoc(doc(db, "category", lineItem), { lineItem: lineItem, category: newCategory }, { merge: true });
-            
-            if (!this.categoriesDict[lineItem]) this.categoriesDict[lineItem] = {};
-            this.categoriesDict[lineItem].category = newCategory;
-            
-            this.transactions.forEach(t => { if(t.lineItem === lineItem) t.category = newCategory; });
-            this.renderActiveView(); 
-        } catch (e) { alert("Error updating category database."); }
-    }
-
     renderTable() {
         const currentData = this.getFilteredAndPartitionedData();
         
@@ -1099,7 +842,7 @@ export default class Home {
         currentData.forEach((t) => {
             let catDisplay = t.category;
             if (!t.category) {
-                catDisplay = `<input type="text" class="cat-input" placeholder="Add Category..." onblur="window.updateCat('${t.lineItem}', this.value)"><span class="text-danger"> Missing</span>`;
+                catDisplay = `<span class="text-danger">Missing</span>`;
             }
 
             html += `<tr>
@@ -1120,8 +863,6 @@ export default class Home {
         html += `</tbody></table></div>`;
         document.getElementById('tabContent').innerHTML = html;
 
-        window.updateCat = (line, val) => this.updateCategory(line, val);
-        
         window.toggleSelectAll = (checked) => {
             currentData.forEach(t => {
                 const masterRow = this.transactions.find(m => m.uid === t.uid);
@@ -1144,51 +885,57 @@ export default class Home {
         };
     }
 
-    renderUnmappedTable() {
-        const unmappedData = [];
+    renderMappingTable() {
+        const mappingData = [];
         const seen = new Set();
         
         this.transactions.forEach(t => {
-            if (!t.category && !seen.has(t.lineItem)) {
+            const dictEntry = this.categoriesDict[t.lineItem];
+            const isUnmapped = !t.category;
+            const isDefault = dictEntry && dictEntry.source === 'default';
+
+            if ((isUnmapped || isDefault) && !seen.has(t.lineItem)) {
                 seen.add(t.lineItem);
-                unmappedData.push(t);
+                t.suggestedCategory = dictEntry ? dictEntry.category : '';
+                t.suggestedType = dictEntry ? dictEntry.accountType : 'Expense';
+                mappingData.push(t);
             }
         });
 
         let html = `
             <div style="margin-bottom: 10px;">
-                <span style="font-size:0.9rem; color:#666;">Showing ${unmappedData.length} unique unmapped line items.</span>
+                <span style="font-size:0.9rem; color:#666;">Showing ${mappingData.length} items requiring company-specific mapping.</span>
             </div>
             <div class="table-responsive">
             <table><thead><tr>
                 <th>Line Item</th>
-                <th>Category Name (QBO Account)</th>
+                <th>Company QBO Account Name</th>
                 <th>Account Type</th>
                 <th>Description</th>
                 <th style="text-align:center;">Action</th>
             </tr></thead><tbody>
         `;
 
-        if (unmappedData.length === 0) {
-            html += `<tr><td colspan="5" style="text-align:center; padding: 2rem; color: #27ae60; font-weight: bold;">All line items are successfully mapped!</td></tr>`;
+        if (mappingData.length === 0) {
+            html += `<tr><td colspan="5" style="text-align:center; padding: 2rem; color: #27ae60; font-weight: bold;">All line items are successfully mapped for this company!</td></tr>`;
         }
 
-        unmappedData.forEach((t, i) => {
+        mappingData.forEach((t, i) => {
             html += `<tr>
                 <td><strong>${t.lineItem}</strong></td>
-                <td><input type="text" id="unmap-cat-${i}" placeholder="E.g., Product Sales, FBA Fees..." style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
+                <td><input type="text" id="unmap-cat-${i}" value="${t.suggestedCategory}" placeholder="QBO Account Name" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
                 <td>
                     <select id="unmap-type-${i}" style="padding:0.4rem; width:100%; box-sizing: border-box;">
-                        <option value="Income">Income</option>
-                        <option value="Expense" selected>Expense</option>
-                        <option value="Bank">Bank / Clearing</option>
-                        <option value="OtherCurrentAsset">Other Current Asset</option>
-                        <option value="CostOfGoodsSold">Cost of Goods Sold</option>
+                        <option value="Income" ${t.suggestedType === 'Income' ? 'selected' : ''}>Income</option>
+                        <option value="Expense" ${t.suggestedType === 'Expense' ? 'selected' : ''}>Expense</option>
+                        <option value="Bank" ${t.suggestedType === 'Bank' ? 'selected' : ''}>Bank / Clearing</option>
+                        <option value="OtherCurrentAsset" ${t.suggestedType === 'OtherCurrentAsset' ? 'selected' : ''}>Other Current Asset</option>
+                        <option value="CostOfGoodsSold" ${t.suggestedType === 'CostOfGoodsSold' ? 'selected' : ''}>Cost of Goods Sold</option>
                     </select>
                 </td>
-                <td><input type="text" id="unmap-desc-${i}" placeholder="Optional internal description" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
+                <td><input type="text" id="unmap-desc-${i}" placeholder="Optional notes" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
                 <td style="text-align:center;">
-                    <button class="btn" onclick="window.pushAndSaveUnmapped('${t.lineItem}', ${i})">Push to QBO & Save</button>
+                    <button class="btn" style="background:#27ae60; color:white; font-weight:bold; padding:0.4rem 1rem;" onclick="window.pushAndSaveMapping('${t.lineItem}', ${i}, '${t.suggestedCategory}')">Push & Save</button>
                 </td>
             </tr>`;
         });
@@ -1196,7 +943,7 @@ export default class Home {
         html += `</tbody></table></div>`;
         document.getElementById('tabContent').innerHTML = html;
 
-        window.pushAndSaveUnmapped = async (lineItem, index) => {
+        window.pushAndSaveMapping = async (lineItem, index, oldCat) => {
             const catVal = document.getElementById(`unmap-cat-${index}`).value.trim();
             const typeVal = document.getElementById(`unmap-type-${index}`).value;
             const descVal = document.getElementById(`unmap-desc-${index}`).value.trim();
@@ -1215,27 +962,47 @@ export default class Home {
 
             btn.innerText = "Pushing...";
             btn.disabled = true;
+            const realmId = qboSelect.value;
 
             try {
                 const getOrCreateQboAccount = httpsCallable(functions, 'getOrCreateQboAccount');
                 
                 await getOrCreateQboAccount({
                     accountName: catVal,
-                    realmId: qboSelect.value,
+                    realmId: realmId,
                     accountType: typeVal,
                     description: descVal
                 });
 
-                await setDoc(doc(db, "category", lineItem), {
-                    lineItem: lineItem,
-                    category: catVal,
-                    accountType: typeVal,
-                    description: descVal
+                const batch = writeBatch(db);
+                const ts = new Date().toISOString();
+                
+                const mapRef = doc(db, `qbo_companies/${realmId}/category_mappings`, lineItem);
+                batch.set(mapRef, { 
+                    lineItem: lineItem, 
+                    category: catVal, 
+                    accountType: typeVal, 
+                    description: descVal, 
+                    modifiedBy: currentUser.email, 
+                    modifiedAt: ts 
                 }, { merge: true });
+
+                const logRef = doc(collection(db, `qbo_companies/${realmId}/audit_logs`));
+                batch.set(logRef, { 
+                    action: oldCat ? "UPDATE" : "CREATE", 
+                    lineItem: lineItem, 
+                    oldCategory: oldCat || "UNMAPPED", 
+                    newCategory: catVal, 
+                    modifiedBy: currentUser.email, 
+                    modifiedAt: ts 
+                });
+
+                await batch.commit();
 
                 if (!this.categoriesDict[lineItem]) this.categoriesDict[lineItem] = {};
                 this.categoriesDict[lineItem].category = catVal;
                 this.categoriesDict[lineItem].accountType = typeVal;
+                this.categoriesDict[lineItem].source = 'company';
                 
                 this.transactions.forEach(t => {
                     if (t.lineItem === lineItem) t.category = catVal;
@@ -1246,10 +1013,225 @@ export default class Home {
 
             } catch (err) {
                 this.showAlert(err.message, "danger");
-                btn.innerText = "Push to QBO & Save";
+                btn.innerText = "Push & Save";
                 btn.disabled = false;
             }
         };
+    }
+
+    async handlePushToQbo() {
+        if (this.userRole === 'guest' && this.userProfile.monthlyBatchesPushed >= 10) {
+            return this.showAlert("Monthly push limit reached (10/10). Please subscribe in the UI to continue pushing data.", "danger");
+        }
+
+        if (this.activeMainTab === 'all') return this.showAlert("Please select a specific transaction tab (Sales, Refunds, etc.) to push.", "warning");
+        const qboSelect = document.getElementById('qboSelect');
+        if (!qboSelect || !qboSelect.value) return this.showAlert("Please connect and select a QBO account first.", "warning");
+
+        // ONLY PROCESS UNCHECKED ROWS
+        const visibleData = this.getFilteredAndPartitionedData().filter(t => !t.selected);
+        if (visibleData.length === 0) return this.showAlert("No unchecked transactions in the current view to push.", "warning");
+
+        const pushBtn = document.getElementById('syncQboBtn');
+        const statusText = document.getElementById('pushStatusText');
+        const originalText = pushBtn.innerText;
+        
+        pushBtn.innerText = "Provisioning & Pushing...";
+        pushBtn.disabled = true;
+        
+        if(statusText) {
+            statusText.innerText = "Initializing push connection...";
+            statusText.style.color = "#ffffff"; 
+            statusText.style.textShadow = "1px 1px 3px rgba(0,0,0,0.6)";
+        }
+
+        let wakeLock = null;
+        try {
+            if ('wakeLock' in navigator) {
+                wakeLock = await navigator.wakeLock.request('screen');
+            }
+        } catch (err) {}
+
+        try {
+            const config = {
+                realmId: qboSelect.value,
+                depositAccountName: this.depositAccount && this.depositAccount.trim() !== "" ? this.depositAccount : "Payments to Deposit",
+                functions: functions,
+                endDate: this.endDate,
+                batchId: `batch_${Date.now()}` 
+            };
+
+            let pushedIds = [];
+
+            if (this.activeSubTab === 'table') {
+                if (this.activeMainTab === 'sales') pushedIds = await pushSalesReceipts(visibleData, config, this);
+                else if (this.activeMainTab === 'refunds') pushedIds = await pushRefundReceipts(visibleData, config, this);
+                else if (this.activeMainTab === 'deposits') pushedIds = await pushDeposits(visibleData, config, this);
+                else if (this.activeMainTab === 'expenses') pushedIds = await pushExpenses(visibleData, config, this);
+                else if (this.activeMainTab === 'payouts') pushedIds = await pushPayouts(visibleData, config, this);
+            } else {
+                pushedIds = await this.pushStandardJournalEntry(visibleData, config);
+            }
+
+            if (pushedIds && pushedIds.length > 0) {
+                await setDoc(doc(db, `qbo_companies/${config.realmId}/transPushedToQB`, config.batchId), {
+                    timestamp: new Date().toISOString(),
+                    realmId: config.realmId,
+                    tab: this.activeMainTab,
+                    view: this.activeSubTab,
+                    qboIds: pushedIds,
+                    pushedBy: currentUser.email
+                });
+
+                if (this.userRole === 'guest') {
+                    this.userProfile.monthlyBatchesPushed++;
+                    await setDoc(doc(db, "users", currentUser.uid, "profile", "billing"), {
+                        monthlyBatchesPushed: this.userProfile.monthlyBatchesPushed
+                    }, { merge: true });
+                    this.updateReadyStatus(); 
+                }
+                
+                if (statusText) {
+                    statusText.innerText = `Push completed successfully! ${pushedIds.length} transactions saved to QBO.`;
+                }
+            } else {
+                if (statusText) {
+                    statusText.innerText = `All selected transactions were identified as duplicates and skipped.`;
+                    statusText.style.color = "#e67e22"; 
+                    statusText.style.textShadow = "none";
+                    document.getElementById('pushProgressFill').style.width = '0%';
+                }
+            }
+
+        } catch (error) {
+            console.error("Push failed:", error);
+            this.showAlert(error.message || "Failed to push to QBO. See console.", "danger");
+            if(statusText) {
+                statusText.innerText = "Status: Push failed. Check alerts.";
+                statusText.style.color = "#e74c3c";
+                statusText.style.textShadow = "none";
+                document.getElementById('pushProgressFill').style.width = '0%';
+            }
+        } finally {
+            if (wakeLock !== null) wakeLock.release().catch(()=>{});
+            pushBtn.innerText = originalText;
+            pushBtn.disabled = false;
+        }
+    }
+
+    async pushStandardJournalEntry(visibleData, config) {
+        const getOrCreateQboAccount = httpsCallable(config.functions, 'getOrCreateQboAccount');
+        const pushJournalEntry = httpsCallable(config.functions, 'pushJournalEntry');
+
+        let depId;
+        const depResponse = await getOrCreateQboAccount({ accountName: config.depositAccountName, realmId: config.realmId, accountType: "Bank" });
+        depId = depResponse.data.id;
+
+        let pushedIds = [];
+
+        if (this.activeMainTab === 'payouts') {
+            const totalTxns = visibleData.length;
+            const totalLines = visibleData.length;
+            let txnsPushed = 0;
+            let linesPushed = 0;
+
+            for (const t of visibleData) {
+                if (!t.category) throw new Error("Missing Categories: Please map all payout line items.");
+                const amt = this.parseAmt(t.total);
+                if (amt === 0) continue;
+
+                const catResponse = await getOrCreateQboAccount({ accountName: t.category, realmId: config.realmId });
+                const qboId = catResponse.data.id;
+
+                const individualLines = [];
+                if (amt < 0) {
+                    individualLines.push({ postingType: "Debit", amount: Math.abs(amt), qboAccountId: qboId, description: t.lineItem });
+                    individualLines.push({ postingType: "Credit", amount: Math.abs(amt), qboAccountId: depId, description: "Payout Transfer Offset" });
+                } else {
+                    individualLines.push({ postingType: "Credit", amount: amt, qboAccountId: qboId, description: t.lineItem });
+                    individualLines.push({ postingType: "Debit", amount: amt, qboAccountId: depId, description: "Payout Transfer Offset" });
+                }
+
+                const tDate = t['date/time'] ? this.getAmazonDateStr(t['date/time']) : null;
+                const res = await pushJournalEntry({ realmId: config.realmId, lines: individualLines, txnDate: tDate, privateNote: `VilBooks Transfer ID: ${t['settlement id'] || 'Manual'}` });
+                pushedIds.push({ type: "JournalEntry", id: res.data.qboResponseId });
+                
+                // Write signature to prevent duplicates later
+                const exactTimeMs = t['date/time'] ? new Date(t['date/time']).getTime() : Date.now();
+                const signature = `PAYOUT_${exactTimeMs}_${t['settlement id']}_${Math.abs(amt).toFixed(2)}`;
+                await setDoc(doc(db, `qbo_companies/${config.realmId}/qbo_sync_ledger`, signature), { batchId: config.batchId, qboId: res.data.qboResponseId, timestamp: new Date().toISOString() });
+                
+                txnsPushed++;
+                linesPushed++;
+                this.updatePushProgress(linesPushed, txnsPushed, totalLines, totalTxns, 'payout');
+            }
+            this.showAlert(`Success! ${visibleData.length} Individual Payout Entries created in QBO.`, "success");
+        } else {
+            let summary = {};
+            let netDeposit = 0;
+            let missingCats = false;
+
+            visibleData.forEach(t => {
+                if (!t.category) missingCats = true;
+                const amt = this.parseAmt(t.total);
+                const key = t.lineItem || "UNCATEGORIZED"; 
+                if (!summary[key]) summary[key] = { amt: 0, catName: t.category };
+                summary[key].amt += amt;
+                netDeposit += amt;
+            });
+
+            if (missingCats) throw new Error("Missing Categories: Please map all line items before pushing.");
+
+            const linesToPush = [];
+            if (netDeposit > 0) {
+                linesToPush.push({ postingType: "Debit", amount: netDeposit, qboAccountId: depId, description: `Total ${this.activeMainTab}` });
+            } else if (netDeposit < 0) {
+                linesToPush.push({ postingType: "Credit", amount: Math.abs(netDeposit), qboAccountId: depId, description: `Total ${this.activeMainTab}` });
+            }
+
+            for (const lineKey of Object.keys(summary)) {
+                const amt = summary[lineKey].amt;
+                if (amt === 0) continue;
+
+                const catResponse = await getOrCreateQboAccount({ accountName: summary[lineKey].catName, realmId: config.realmId });
+                if (amt < 0) linesToPush.push({ postingType: "Debit", amount: Math.abs(amt), qboAccountId: catResponse.data.id, description: lineKey });
+                else linesToPush.push({ postingType: "Credit", amount: amt, qboAccountId: catResponse.data.id, description: lineKey });
+            }
+
+            let summaryDateStr = config.endDate;
+            if (!summaryDateStr) {
+                const dates = visibleData.map(t => new Date(t['date/time']).getTime()).filter(n => !isNaN(n));
+                if (dates.length > 0) summaryDateStr = this.getAmazonDateStr(new Date(Math.max(...dates)).toISOString());
+            }
+
+            const response = await pushJournalEntry({ realmId: config.realmId, lines: linesToPush, txnDate: summaryDateStr, privateNote: `Imported via VilBooks - Tab: ${this.activeMainTab.toUpperCase()}` });
+            if (response.data.success) {
+                this.showAlert(`Success! ${this.activeMainTab.toUpperCase()} Summary Journal Entry created in QBO.`, "success");
+                pushedIds.push({ type: "JournalEntry", id: response.data.qboResponseId });
+                this.updatePushProgress(visibleData.length, 1, visibleData.length, 1, 'journal entry');
+                
+                // --- WRITE INDIVIDUAL SIGNATURES FOR THE JOURNAL ENTRY ---
+                const groups = {};
+                visibleData.forEach(t => {
+                    const oId = t['order id'] || t.uid;
+                    const dateStamp = t['date/time'] || 'nodate';
+                    const settlementId = t['settlement id'] || 'nosettlement';
+                    const groupKey = `${oId}_${dateStamp}_${settlementId}`;
+                    if (!groups[groupKey]) groups[groupKey] = { date: t['date/time'], settlementId: t['settlement id'], lines: [] };
+                    groups[groupKey].lines.push(t);
+                });
+                
+                for (const groupData of Object.values(groups)) {
+                    const exactTimeMs = groupData.date ? new Date(groupData.date).getTime() : Date.now();
+                    let grpAmt = 0;
+                    groupData.lines.forEach(l => grpAmt += Math.abs(this.parseAmt(l.total)));
+                    let prefix = { 'sales': "SALES", 'refunds': "REFUND", 'expenses': "EXP", 'deposits': "DEP" }[this.activeMainTab] || "JRNL";
+                    const signature = `${prefix}_${exactTimeMs}_${groupData.settlementId}_${grpAmt.toFixed(2)}`;
+                    await setDoc(doc(db, `qbo_companies/${config.realmId}/qbo_sync_ledger`, signature), { batchId: config.batchId, qboId: response.data.qboResponseId, timestamp: new Date().toISOString() });
+                }
+            }
+        }
+        return pushedIds;
     }
 
     renderJournal() {
@@ -1383,6 +1365,83 @@ export default class Home {
 
             html += `</tbody></table></div>`;
             document.getElementById('tabContent').innerHTML = html;
+        }
+    }
+
+    async loadBatchHistory() {
+        const qboSelect = document.getElementById('qboSelect');
+        if (!qboSelect || !qboSelect.value) return;
+        const container = document.getElementById('historyTableContainer');
+        container.innerHTML = "<p>Loading history...</p>";
+
+        try {
+            const snap = await getDocs(collection(db, `qbo_companies/${qboSelect.value}/transPushedToQB`));
+            let batches = [];
+            snap.forEach(doc => batches.push({ id: doc.id, ...doc.data() }));
+            batches.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+            if (batches.length === 0) {
+                container.innerHTML = "<p>No batches pushed yet.</p>";
+                return;
+            }
+
+            let html = `
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
+                    <thead style="background: #f8f9fa;">
+                        <tr>
+                            <th style="padding: 10px; border-bottom: 2px solid #ddd;">Date Pushed</th>
+                            <th style="padding: 10px; border-bottom: 2px solid #ddd;">Tab / View</th>
+                            <th style="padding: 10px; border-bottom: 2px solid #ddd;">Items Created</th>
+                            <th style="padding: 10px; border-bottom: 2px solid #ddd; text-align: center;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            batches.forEach(b => {
+                const dateStr = new Date(b.timestamp).toLocaleString();
+                const itemCount = b.qboIds ? b.qboIds.length : 0;
+                
+                html += `
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">
+                            <strong>${dateStr}</strong><br>
+                            <span style="font-size:0.75rem; color:#888;">${b.id} | by ${b.pushedBy || 'Unknown'}</span>
+                        </td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee; text-transform: capitalize;">
+                            ${b.tab} <span style="color:#aaa;">(${b.view})</span>
+                        </td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">${itemCount}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">
+                            <button onclick="window.deleteBatch('${b.id}', '${b.realmId}')" class="btn danger" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">Reverse / Delete</button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += `</tbody></table>`;
+            container.innerHTML = html;
+
+        } catch (error) {
+            console.error("Failed to load history", error);
+            container.innerHTML = `<p class="text-danger">Error loading batch history.</p>`;
+        }
+    }
+
+    async handleDeleteBatch(batchId, realmId) {
+        if (!confirm("Are you sure you want to delete this entire batch from QuickBooks? This cannot be undone.")) return;
+        
+        try {
+            const deleteQboBatch = httpsCallable(functions, 'deleteQboBatch');
+            document.getElementById('historyTableContainer').innerHTML = "<p>Deleting batch from QuickBooks... Please wait.</p>";
+            
+            const res = await deleteQboBatch({ batchId: batchId, realmId: realmId });
+            
+            alert(`Success: ${res.data.deletedCount} transactions were removed from QuickBooks.`);
+            this.loadBatchHistory(); 
+        } catch (err) {
+            alert(`Failed to delete batch: ${err.message}`);
+            this.loadBatchHistory(); 
         }
     }
 }
