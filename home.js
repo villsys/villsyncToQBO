@@ -233,16 +233,12 @@ export default class Home {
         }
 
         this.userRole = 'guest'; 
-        if (currentUser.email === 'vnvcpas.excelimporter@gmail.com') {
-            this.userRole = 'super_admin';
-        } else {
-            try {
-                const adminDoc = await getDoc(doc(db, "global_config", "admins"));
-                if (adminDoc.exists() && adminDoc.data()[currentUser.email]) {
-                    this.userRole = 'admin';
-                }
-            } catch (e) { console.warn("Admin check skipped due to permissions."); }
-        }
+        try {
+            const adminDoc = await getDoc(doc(db, "global_config", "admins"));
+            if (adminDoc.exists() && adminDoc.data()[currentUser.email]) {
+                this.userRole = 'admin';
+            }
+        } catch (e) {}
 
         const profileRef = doc(db, "users", currentUser.uid, "profile", "billing");
         const profileSnap = await getDoc(profileRef);
@@ -273,7 +269,7 @@ export default class Home {
             }
         }
 
-        if (this.userRole === 'super_admin') {
+        if (this.userRole === 'admin' || this.userRole === 'super_admin') {
             document.getElementById('adminTabBtn').style.display = 'inline-block';
         }
         
@@ -516,7 +512,7 @@ export default class Home {
         const progressFill = document.getElementById('pushProgressFill');
         
         if (statusText) {
-            statusText.innerText = `${linesPushed} lines for ${txnsPushed} ${typeName} transactions pushed out of ${totalLines} lines for ${totalTxns} transactions.`;
+            statusText.innerText = `${linesPushed} lines for ${txnsPushed} ${typeName} transactions pushed out of ${totalLines}.`;
             statusText.style.color = "#ffffff"; 
             statusText.style.textShadow = "1px 1px 3px rgba(0,0,0,0.6)"; 
         }
@@ -1375,6 +1371,7 @@ export default class Home {
         container.innerHTML = "<p>Loading history...</p>";
 
         try {
+            // Load history from COMPANY ROOT
             const snap = await getDocs(collection(db, `qbo_companies/${qboSelect.value}/transPushedToQB`));
             let batches = [];
             snap.forEach(doc => batches.push({ id: doc.id, ...doc.data() }));
