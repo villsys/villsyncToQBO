@@ -39,7 +39,8 @@ export async function pushShopifyExpenses(data, config, context) {
         });
 
         const signature = `SHP_EXP_${exactTimeMs}_${groupData.settlementId}_${netAmount.toFixed(2)}`;
-        const ledgerRef = doc(db, "users", currentUser.uid, "qbo_sync_ledger", signature);
+        // const ledgerRef = doc(db, "users", currentUser.uid, "qbo_sync_ledger", signature);
+        const ledgerRef = doc(db, "qbo_companies", config.realmId, "qbo_sync_ledger", signature);
         const ledgerSnap = await getDoc(ledgerRef);
         
         if (ledgerSnap.exists()) {
