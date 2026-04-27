@@ -854,14 +854,54 @@ export default class Shopify {
                     </select>
                 </td>
                 <td><input type="text" id="unmap-desc-${i}" placeholder="Optional notes" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
-                <td style="text-align:center;">
-                    <button class="btn" style="background:#27ae60; color:white; font-weight:bold; padding:0.4rem 1rem;" onclick="window.pushAndSaveMapping('${t.lineItem}', ${i}, '${t.suggestedCategory}')">Push & Save</button>
+                <td style="text-align:center; display:flex; gap:5px; justify-content:center;">
+                    <button class="btn" style="background:#27ae60; color:white; font-weight:bold; padding:0.4rem 0.8rem;" onclick="window.pushAndSaveMapping('${t.lineItem}', ${i}, '${t.suggestedCategory}')">Push & Save</button>
+                    <button class="btn outline" style="padding:0.4rem 0.8rem;" onclick="window.viewMappingHistory('${t.lineItem}')">📜 History</button>
                 </td>
             </tr>`;
         });
 
         html += `</tbody></table></div>`;
         document.getElementById('tabContent').innerHTML = html;
+
+        // --- NEW: View History Function ---
+        window.viewMappingHistory = async (lineItem) => {
+            const qboSelect = document.getElementById('qboSelect');
+            if (!qboSelect || !qboSelect.value) return this.showAlert("Please connect a QBO account.", "warning");
+            const realmId = qboSelect.value;
+
+            document.getElementById('historyLineItemLabel').innerText = lineItem;
+            document.getElementById('mappingHistoryModal').style.display = 'flex';
+            const container = document.getElementById('mappingHistoryTableContainer');
+            container.innerHTML = '<p style="text-align:center; padding: 2rem;">Loading audit logs...</p>';
+
+            try {
+                const snap = await getDocs(collection(db, `qbo_companies/${realmId}/audit_logs`));
+                let logs = [];
+                snap.forEach(doc => {
+                    const data = doc.data();
+                    if (data.lineItem === lineItem) logs.push(data);
+                });
+                
+                logs.sort((a, b) => new Date(b.modifiedAt) - new Date(a.modifiedAt));
+
+                if (logs.length === 0) {
+                    container.innerHTML = '<p style="text-align:center; padding: 2rem; color: #666;">No company-specific mapping history found for this line item.</p>';
+                    return;
+                }
+
+                let logHtml = `<table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;"><thead style="background: #f8f9fa;"><tr><th style="padding: 10px; border-bottom: 2px solid #ddd;">Date</th><th style="padding: 10px; border-bottom: 2px solid #ddd;">Action</th><th style="padding: 10px; border-bottom: 2px solid #ddd;">Category Change</th><th style="padding: 10px; border-bottom: 2px solid #ddd;">User</th></tr></thead><tbody>`;
+
+                logs.forEach(log => {
+                    const dateStr = new Date(log.modifiedAt).toLocaleString();
+                    logHtml += `<tr><td style="padding: 10px; border-bottom: 1px solid #eee;">${dateStr}</td><td style="padding: 10px; border-bottom: 1px solid #eee; font-weight:bold; color: #8e44ad;">${log.action}</td><td style="padding: 10px; border-bottom: 1px solid #eee;"><span style="color:#e74c3c;">${log.oldCategory}</span> ➔ <strong style="color:#27ae60;">${log.newCategory}</strong></td><td style="padding: 10px; border-bottom: 1px solid #eee;">${log.modifiedBy}</td></tr>`;
+                });
+                logHtml += `</tbody></table>`;
+                container.innerHTML = logHtml;
+            } catch (error) {
+                container.innerHTML = '<p class="text-danger" style="text-align:center;">Failed to load history.</p>';
+            }
+        };
 
         window.pushAndSaveMapping = async (lineItem, index, oldCat) => {
             const catVal = document.getElementById(`unmap-cat-${index}`).value.trim();
