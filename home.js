@@ -446,7 +446,7 @@ export default class Home {
                 limitText.style.color = "#27ae60";
             } else {
                 let remaining = Math.max(0, 10 - (this.userProfile?.monthlyBatchesPushed || 0));
-                limitText.innerHTML = `<strong>GUEST</strong> | ${remaining} batches left | Max 10 rows`;
+                limitText.innerHTML = `<strong>GUEST</strong> | ${remaining} batches left`;
                 limitText.style.color = remaining <= 2 ? "#e74c3c" : "#666";
             }
         }
@@ -456,24 +456,14 @@ export default class Home {
         statusText.style.textShadow = "none";
 
         if (this.activeMainTab === 'unmapped') {
-            let mappingCount = 0;
-            const seen = new Set();
-            this.transactions.forEach(t => {
-                const dictEntry = this.categoriesDict[t.lineItem];
-                const isUnmapped = !t.category;
-                const isDefault = dictEntry && dictEntry.source === 'default';
-                if ((isUnmapped || isDefault) && !seen.has(t.lineItem)) {
-                    seen.add(t.lineItem);
-                    mappingCount++;
-                }
-            });
-            statusText.innerText = `${mappingCount} items require company-specific mapping.`;
-            statusText.style.color = mappingCount > 0 ? "#e74c3c" : "#27ae60";
+            const uniqueLines = new Set(this.transactions.map(t => t.lineItem)).size;
+            statusText.innerText = `Mapping Manager: Reviewing ${uniqueLines} unique line items from this upload.`;
+            statusText.style.color = "#2c3e50";
             if (highVolumeBanner) highVolumeBanner.style.display = 'none';
             return;
         }
 
-        const currentData = this.getFilteredAndPartitionedData();
+        const currentData = this.getFilteredAndPartitionedData ? this.getFilteredAndPartitionedData() : this.getFilteredData();
         const totalLines = currentData.length;
         
         let totalTxns = 0;
@@ -489,8 +479,8 @@ export default class Home {
             const groups = new Set();
             currentData.forEach(t => {
                 const oId = t['order id'] || t.uid;
-                const dateStamp = t['date/time'] || 'nodate';
-                const settlementId = t['settlement id'] || 'nosettlement';
+                const dateStamp = t['date/time'] || t.dateTime || 'nodate';
+                const settlementId = t['settlement id'] || t.settlementId || 'nosettlement';
                 groups.add(`${oId}_${dateStamp}_${settlementId}`);
             });
             totalTxns = groups.size;
@@ -502,9 +492,7 @@ export default class Home {
             statusText.innerText = `${totalLines} lines for ${totalTxns} ${typeName} transactions ready to push.`;
         }
         
-        if (highVolumeBanner) {
-            highVolumeBanner.style.display = totalLines > 500 ? 'block' : 'none';
-        }
+        if (highVolumeBanner) highVolumeBanner.style.display = totalLines > 500 ? 'block' : 'none';
     }
 
     updatePushProgress(linesPushed, txnsPushed, totalLines, totalTxns, typeName) {
@@ -886,37 +874,44 @@ export default class Home {
         const seen = new Set();
         
         this.transactions.forEach(t => {
-            const dictEntry = this.categoriesDict[t.lineItem];
-            const isUnmapped = !t.category;
-            const isDefault = dictEntry && dictEntry.source === 'default';
-
-            if ((isUnmapped || isDefault) && !seen.has(t.lineItem)) {
+            if (!seen.has(t.lineItem)) {
                 seen.add(t.lineItem);
+                const dictEntry = this.categoriesDict[t.lineItem];
+                
+                // Prefill with whatever is available (Default or Company)
                 t.suggestedCategory = dictEntry ? dictEntry.category : '';
                 t.suggestedType = dictEntry ? dictEntry.accountType : 'Expense';
+                t.mappingSource = dictEntry ? dictEntry.source : 'unmapped';
+                
                 mappingData.push(t);
             }
         });
 
         let html = `
             <div style="margin-bottom: 10px;">
-                <span style="font-size:0.9rem; color:#666;">Showing ${mappingData.length} items requiring company-specific mapping.</span>
+                <span style="font-size:0.9rem; color:#666;">Showing all ${mappingData.length} unique line items in this file. Overrides are saved specifically to the active QBO Company.</span>
             </div>
             <div class="table-responsive">
             <table><thead><tr>
                 <th>Line Item</th>
                 <th>Company QBO Account Name</th>
                 <th>Account Type</th>
+                <th style="text-align:center;">Source</th>
                 <th>Description</th>
                 <th style="text-align:center;">Action</th>
             </tr></thead><tbody>
         `;
 
         if (mappingData.length === 0) {
-            html += `<tr><td colspan="5" style="text-align:center; padding: 2rem; color: #27ae60; font-weight: bold;">All line items are successfully mapped for this company!</td></tr>`;
+            html += `<tr><td colspan="6" style="text-align:center; padding: 2rem; color: #666;">No line items found. Please upload a file.</td></tr>`;
         }
 
         mappingData.forEach((t, i) => {
+            // Beautiful colored badges to instantly see where the rule came from
+            let sourceBadge = t.mappingSource === 'default' ? `<span style="background:#e9ecef; padding:2px 6px; border-radius:4px; font-size:0.75rem; color:#8e44ad; font-weight:bold;">Global Default</span>` :
+                              t.mappingSource === 'company' ? `<span style="background:#e8f8f5; padding:2px 6px; border-radius:4px; font-size:0.75rem; color:#27ae60; font-weight:bold;">Company</span>` :
+                              `<span style="background:#fdedec; padding:2px 6px; border-radius:4px; font-size:0.75rem; color:#e74c3c; font-weight:bold;">Unmapped</span>`;
+
             html += `<tr>
                 <td><strong>${t.lineItem}</strong></td>
                 <td><input type="text" id="unmap-cat-${i}" value="${t.suggestedCategory}" placeholder="QBO Account Name" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
@@ -929,9 +924,10 @@ export default class Home {
                         <option value="CostOfGoodsSold" ${t.suggestedType === 'CostOfGoodsSold' ? 'selected' : ''}>Cost of Goods Sold</option>
                     </select>
                 </td>
+                <td style="text-align:center;">${sourceBadge}</td>
                 <td><input type="text" id="unmap-desc-${i}" placeholder="Optional notes" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
                 <td style="text-align:center; display:flex; gap:5px; justify-content:center;">
-                    <button class="btn" style="background:#27ae60; color:white; font-weight:bold; padding:0.4rem 0.8rem;" onclick="window.pushAndSaveMapping('${t.lineItem}', ${i}, '${t.suggestedCategory}')">Push & Save</button>
+                    <button class="btn" style="background:#27ae60; color:white; font-weight:bold; padding:0.4rem 0.8rem;" onclick="window.pushAndSaveMapping('${t.lineItem}', ${i}, '${t.suggestedCategory}')">Save</button>
                     <button class="btn outline" style="padding:0.4rem 0.8rem;" onclick="window.viewMappingHistory('${t.lineItem}')">📜 History</button>
                 </td>
             </tr>`;
@@ -940,7 +936,6 @@ export default class Home {
         html += `</tbody></table></div>`;
         document.getElementById('tabContent').innerHTML = html;
 
-        // --- NEW: View History Function ---
         window.viewMappingHistory = async (lineItem) => {
             const qboSelect = document.getElementById('qboSelect');
             if (!qboSelect || !qboSelect.value) return this.showAlert("Please connect a QBO account.", "warning");
@@ -996,7 +991,7 @@ export default class Home {
                 return;
             }
 
-            btn.innerText = "Pushing...";
+            btn.innerText = "Saving...";
             btn.disabled = true;
             const realmId = qboSelect.value;
 
@@ -1049,7 +1044,7 @@ export default class Home {
 
             } catch (err) {
                 this.showAlert(err.message, "danger");
-                btn.innerText = "Push & Save";
+                btn.innerText = "Save";
                 btn.disabled = false;
             }
         };
