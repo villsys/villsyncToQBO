@@ -22,9 +22,10 @@ export default class Admin {
                 <p>Logged in as: ${currentUser.email}</p>
                 <hr>
                 
-                <h3>Manage Category Mappings</h3>
+                <h3>Manage Global Default Mappings</h3>
+                <p style="color: #666; font-size: 0.9rem; margin-top: -10px;">These are the baseline mappings applied to all users. Users can override these defaults in their specific company workspace.</p>
                 <div class="control-panel" style="margin-bottom: 2rem; display: flex; flex-direction: column; gap: 10px;">
-                    <h4 id="formTitle" style="margin: 0;">Add New Mapping</h4>
+                    <h4 id="formTitle" style="margin: 0;">Add New Global Default</h4>
                     
                     <input type="text" id="catLineItem" placeholder="Line Item (Exact match from import file)" style="padding: 0.5rem;">
                     
@@ -43,14 +44,14 @@ export default class Admin {
                     <input type="text" id="catDesc" placeholder="Description / Notes (Optional)" style="padding: 0.5rem;">
                     
                     <div style="display: flex; gap: 10px;">
-                        <button id="saveCatBtn" class="btn" style="padding: 0.5rem 1rem;">Save Mapping</button>
+                        <button id="saveCatBtn" class="btn" style="padding: 0.5rem 1rem;">Save Global Mapping</button>
                         <button id="cancelEditBtn" class="btn outline" style="display: none; padding: 0.5rem 1rem;">Cancel Edit</button>
                     </div>
                     <div id="adminStatus" style="color: var(--accent); font-weight: bold; font-size: 0.9rem;"></div>
                 </div>
 
                 <div id="catTableContainer">
-                    <p style="padding: 2rem; text-align: center; color: #7f8c8d;">Loading categories...</p>
+                    <p style="padding: 2rem; text-align: center; color: #7f8c8d;">Loading global categories...</p>
                 </div>
             </div>
         `;
@@ -94,7 +95,7 @@ export default class Admin {
                                 </div>
                             </div>
                         </th>
-                        <th style="padding: 0.5rem;">Category</th>
+                        <th style="padding: 0.5rem;">Default Category</th>
                         <th style="padding: 0.5rem;">Type</th>
                         <th style="padding: 0.5rem;">Description</th>
                         <th style="width: 130px; text-align: center; padding: 0.5rem;">Actions</th>
@@ -104,7 +105,7 @@ export default class Admin {
         `;
 
         if (this.categories.length === 0) {
-            html += `<tr><td colspan="5" style="text-align: center; padding: 0.5rem;">No categories found. Add one above.</td></tr>`;
+            html += `<tr><td colspan="5" style="text-align: center; padding: 0.5rem;">No global defaults found. Add one above.</td></tr>`;
         } else {
             this.categories.forEach((c, index) => {
                 const isMatch = c.lineItem.toLowerCase().includes(this.searchTerm) || c.category.toLowerCase().includes(this.searchTerm);
@@ -223,7 +224,7 @@ export default class Admin {
             statusDiv.style.color = "red";
         } finally {
             saveBtn.disabled = false;
-            saveBtn.innerText = "Save Mapping";
+            saveBtn.innerText = "Save Global Mapping";
             setTimeout(() => statusDiv.innerText = "", 3000);
         }
     }
@@ -233,31 +234,31 @@ export default class Admin {
         if (!cat) return;
 
         this.editingId = id;
-        document.getElementById('formTitle').innerText = "Edit Mapping";
+        document.getElementById('formTitle').innerText = "Edit Global Mapping";
         document.getElementById('catLineItem').value = cat.lineItem;
         document.getElementById('catName').value = cat.category;
         document.getElementById('catType').value = cat.accountType || "";
         document.getElementById('catDesc').value = cat.description || "";
         
-        document.getElementById('saveCatBtn').innerText = "Update Mapping";
+        document.getElementById('saveCatBtn').innerText = "Update Global Mapping";
         document.getElementById('cancelEditBtn').style.display = "inline-block";
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     resetForm() {
         this.editingId = null;
-        document.getElementById('formTitle').innerText = "Add New Mapping";
+        document.getElementById('formTitle').innerText = "Add New Global Default";
         document.getElementById('catLineItem').value = "";
         document.getElementById('catName').value = "";
         document.getElementById('catType').value = "";
         document.getElementById('catDesc').value = "";
         
-        document.getElementById('saveCatBtn').innerText = "Save Mapping";
+        document.getElementById('saveCatBtn').innerText = "Save Global Mapping";
         document.getElementById('cancelEditBtn').style.display = "none";
     }
 
     async handleDelete(id) {
-        if (!confirm(`Are you sure you want to delete the mapping for:\n"${id}"?`)) return;
+        if (!confirm(`Are you sure you want to delete the global mapping for:\n"${id}"?`)) return;
 
         try {
             await deleteDoc(doc(db, "category", id));
