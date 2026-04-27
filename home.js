@@ -233,12 +233,19 @@ export default class Home {
         }
 
         this.userRole = 'guest'; 
-        try {
-            const adminDoc = await getDoc(doc(db, "global_config", "admins"));
-            if (adminDoc.exists() && adminDoc.data()[currentUser.email]) {
-                this.userRole = 'admin';
-            }
-        } catch (e) {}
+        
+        // 1. Check for Super Admin first
+        if (currentUser.email === 'vnvcpas.excelimporter@gmail.com') {
+            this.userRole = 'super_admin';
+        } else {
+            // 2. Check for Standard Admins
+            try {
+                const adminDoc = await getDoc(doc(db, "global_config", "admins"));
+                if (adminDoc.exists() && adminDoc.data()[currentUser.email]) {
+                    this.userRole = 'admin';
+                }
+            } catch (e) {}
+        }
 
         const profileRef = doc(db, "users", currentUser.uid, "profile", "billing");
         const profileSnap = await getDoc(profileRef);
@@ -269,6 +276,7 @@ export default class Home {
             }
         }
 
+        // Show the Admin Panel button if they have elevated privileges
         if (this.userRole === 'admin' || this.userRole === 'super_admin') {
             document.getElementById('adminTabBtn').style.display = 'inline-block';
         }
