@@ -38,7 +38,10 @@ export default class Admin {
         await this.checkRoleAndScope();
 
         if (this.userRole !== 'super_admin' && this.userRole !== 'admin') {
-            return `<div class="container"><h3>Access Denied. You do not have admin privileges.</h3></div>`;
+            return `<div class="container" style="padding: 3rem; text-align: center; color: #e74c3c;">
+                <h3>Access Denied</h3>
+                <p>You do not have administrative privileges for this workspace.</p>
+            </div>`;
         }
 
         let scopeSelectorHTML = '';
@@ -66,7 +69,7 @@ export default class Admin {
                 
                 ${scopeSelectorHTML}
 
-                <div class="control-panel" style="margin-bottom: 2rem; display: flex; flex-direction: column; gap: 10px;">
+                <div class="control-panel" id="adminControlPanel" style="margin-bottom: 2rem; display: flex; flex-direction: column; gap: 10px;">
                     <h4 id="formTitle" style="margin: 0;">Add/Edit Mapping</h4>
                     
                     <input type="text" id="catLineItem" placeholder="Line Item (Exact match from import file)" style="padding: 0.5rem;">
@@ -101,6 +104,10 @@ export default class Admin {
 
     async afterRender() {
         if (!currentUser) return;
+
+        // GUARD: If the save button doesn't exist (because access was denied), stop executing to prevent the null crash
+        const saveCatBtn = document.getElementById('saveCatBtn');
+        if (!saveCatBtn) return;
         
         const scopeRadios = document.querySelectorAll('input[name="scopeSelect"]');
         scopeRadios.forEach(radio => {
@@ -111,7 +118,7 @@ export default class Admin {
             });
         });
 
-        document.getElementById('saveCatBtn').addEventListener('click', () => this.handleSave());
+        saveCatBtn.addEventListener('click', () => this.handleSave());
         document.getElementById('cancelEditBtn').addEventListener('click', () => this.resetForm());
         await this.loadCategories();
     }
