@@ -5,7 +5,6 @@ import { currentUser } from './app.js';
 
 export default class ProductCostBuilder {
     constructor() {
-        this.categoriesDict = {};
         this.activeMainTab = "general_journal";
         this.batchData = {
             batchId: Date.now().toString(),
@@ -20,7 +19,9 @@ export default class ProductCostBuilder {
         this.laborItems = [];
         this.overheadItems = [];
         
-        // Generated Data
+        // QBO Live Data
+        this.qboAccounts = [];
+        this.qboItems = [];
         this.uniqueLineItems = new Set();
         this.userRole = 'guest'; 
     }
@@ -38,40 +39,34 @@ export default class ProductCostBuilder {
                 .costing-dashboard { width: 100%; background: #fff; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 8px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; box-sizing: border-box; overflow: hidden; }
                 .costing-dashboard h2 { color: var(--header-bg); font-size: 14px; margin-top: 15px; margin-bottom: 5px; text-transform: uppercase; }
                 
-                /* Layout Optimization */
                 .main-layout { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; width: 100%; }
                 .left-column { flex: 2.3; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
                 .right-column { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
                 
                 .table-responsive { width: 100%; overflow-x: auto; margin-bottom: 10px; display: block; }
                 
-                /* Base table reset over global styles */
                 table.costing-table { border-collapse: collapse !important; font-size: 0.85rem !important; width: 100% !important; min-width: 0 !important; }
                 table.costing-table th, table.costing-table td { border: 1px solid var(--border-color); padding: 4px 8px; text-align: left; }
                 table.costing-table th { background-color: var(--header-bg); color: var(--header-text); text-align: center; font-weight: normal; }
                 
-                /* Table 1, 5, 6 Layout */
                 table.simple-table { table-layout: auto !important; }
                 table.simple-table td.label-cell { width: 1%; min-width: 220px; white-space: normal; padding-right: 15px !important; background-color: var(--accent-bg); font-weight: bold; line-height: 1.2; }
                 table.simple-table td:nth-child(2) { padding: 0 !important; width: auto; }
                 table.simple-table input { width: 100%; border: none; padding: 4px 8px; text-align: right !important; box-sizing: border-box; background-color: var(--input-bg); }
                 table.simple-table td.calc-cell { background-color: var(--calc-bg); text-align: right; padding: 4px 8px !important; }
 
-                /* Table 2, 3, 4 Layout (Data Tables) */
                 table.data-table { table-layout: fixed !important; min-width: 800px !important; }
                 table.data-table th { white-space: normal; word-wrap: break-word; line-height: 1.2; padding: 4px !important; }
                 
-                /* Column Widths */
                 .col-action { width: 30px; text-align: center; }
-                .col-num { width: 55px; text-align: center; } /* 999.99 */
-                .col-tot { width: 85px; text-align: right; } /* 9,999,999.99 */
+                .col-num { width: 55px; text-align: center; } 
+                .col-tot { width: 85px; text-align: right; } 
                 
                 table.data-table td.input-cell { padding-left: 2px !important; padding-right: 2px !important; }
                 table.data-table input, table.data-table select { width: 100%; box-sizing: border-box; background-color: var(--input-bg); border: 1px solid #ccc; padding: 3px; }
                 table.data-table input[type="number"] { text-align: right; }
                 table.data-table td.calc-cell { background-color: var(--calc-bg); padding-right: 6px !important; text-align: right; overflow: hidden; text-overflow: ellipsis; }
 
-                /* Remove annoying number spinners */
                 input[type="number"]::-webkit-outer-spin-button,
                 input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
                 input[type="number"] { -moz-appearance: textfield; }
@@ -87,16 +82,12 @@ export default class ProductCostBuilder {
                 .lock-modal { background: #f8f9fa; border: 2px solid var(--header-bg); padding: 2rem; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); width: 400px; }
                 .lock-modal input { width: 100%; padding: 0.5rem; margin-bottom: 1rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
 
-                @media (max-width: 1024px) {
-                    .left-column, .right-column { flex: 1 1 100%; }
-                }
+                .qbo-badge { background: #e8f8f5; color: #27ae60; font-size: 0.7rem; padding: 2px 5px; border-radius: 3px; font-weight: bold; margin-left: 5px; white-space: nowrap; }
 
-                /* Mobile View: Horizontal Scroll for data tables */
+                @media (max-width: 1024px) { .left-column, .right-column { flex: 1 1 100%; } }
                 @media (max-width: 768px) {
                     .data-table th:nth-child(1), .data-table td:nth-child(1),
-                    .data-table th:nth-child(2), .data-table td:nth-child(2) {
-                        position: sticky; z-index: 2; background-color: #fff;
-                    }
+                    .data-table th:nth-child(2), .data-table td:nth-child(2) { position: sticky; z-index: 2; background-color: #fff; }
                     .data-table th:nth-child(1), .data-table th:nth-child(2) { background-color: var(--header-bg); z-index: 3; }
                     .data-table th:nth-child(1), .data-table td:nth-child(1) { left: 0; }
                     .data-table th:nth-child(2), .data-table td:nth-child(2) { left: 30px; box-shadow: 2px 0 5px -2px rgba(0,0,0,0.2); }
@@ -104,7 +95,7 @@ export default class ProductCostBuilder {
             </style>
 
             <div class="container" style="padding-top: 0.25rem;">
-                <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.4rem;">VillSync to QB: Product Cost Builder</h2>
+                <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.4rem;">VilBooks to QBO: Product Cost Builder</h2>
                 <div id="alertBox" class="alert" style="margin-bottom: 0.25rem; padding: 0.4rem;"></div>
 
                 <div class="costing-dashboard" style="position: relative; min-height: 600px;">
@@ -286,16 +277,6 @@ export default class ProductCostBuilder {
                     </div>
                 </div>
             </div>
-
-            <div id="mappingHistoryModal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; align-items:center; justify-content:center;">
-                <div class="modal-content" style="background:#fff; padding:2rem; border-radius:8px; width:90%; max-width:800px;">
-                    <h2 style="margin-top:0;">Audit History: <span id="historyLineItemLabel" style="color: #27ae60;"></span></h2>
-                    <div id="mappingHistoryTableContainer" style="margin: 1rem 0; max-height: 400px; overflow-y: auto;"></div>
-                    <div style="text-align: right; margin-top: 1rem;">
-                        <button class="btn outline" onclick="document.getElementById('mappingHistoryModal').style.display='none'">Close</button>
-                    </div>
-                </div>
-            </div>
         `;
     }
 
@@ -326,12 +307,12 @@ export default class ProductCostBuilder {
         const qboSelect = document.getElementById('qboSelect');
         if (qboSelect) {
             qboSelect.addEventListener('change', async () => {
-                await this.loadCategories();
+                await this.loadLiveQboData();
                 this.calculateAll();
             });
         }
         
-        await this.loadCategories();
+        await this.loadLiveQboData();
         await this.loadDropdownCollections();
 
         this.attachGlobalHelpers();
@@ -351,7 +332,6 @@ export default class ProductCostBuilder {
             });
         });
 
-        // Initialize Defaults
         this.addBomRow();
         this.addLaborStageGroup();
         this.addOhStageGroup();
@@ -373,7 +353,6 @@ export default class ProductCostBuilder {
         const pushBtn = document.getElementById('pushQboBtn');
         if (this.userRole !== 'guest') {
             pushBtn.disabled = false;
-            pushBtn.title = "Push these entries to QBO";
         } else {
             pushBtn.disabled = true;
             pushBtn.title = "Available to Subscribers/Admins only";
@@ -397,6 +376,25 @@ export default class ProductCostBuilder {
         }
     }
 
+    // THE NEW LIVE DATA FETCHER
+    async loadLiveQboData() {
+        this.qboAccounts = [];
+        this.qboItems = [];
+        
+        const qboSelect = document.getElementById('qboSelect');
+        if (!qboSelect || !qboSelect.value || !currentUser) return;
+
+        try {
+            const fetchQboLists = httpsCallable(functions, 'fetchQboLists');
+            const res = await fetchQboLists({ realmId: qboSelect.value });
+            this.qboAccounts = res.data.accounts || [];
+            this.qboItems = res.data.items || [];
+        } catch (e) {
+            console.error("Failed to load live QBO data", e);
+            this.showAlert("Could not sync with QBO. Mappings may be inaccurate.", "warning");
+        }
+    }
+
     generateSelectHtml(options, className, onchangeStr, selectedVal = "") {
         let html = `<select class="${className}" onchange="if(this.value==='ADD_NEW'){window.addNewDropdownItem(this, '${className}')} else {${onchangeStr}}">`;
         html += `<option value="">Select...</option>`;
@@ -412,10 +410,7 @@ export default class ProductCostBuilder {
     attachGlobalHelpers() {
         window.addNewDropdownItem = async (selectEl, className) => {
             const newVal = prompt("Enter the name of the new item:");
-            if (!newVal || newVal.trim() === "") {
-                selectEl.value = ""; 
-                return;
-            }
+            if (!newVal || newVal.trim() === "") { selectEl.value = ""; return; }
             
             let colName = "";
             if (className.includes('b-item')) colName = "rawMaterials";
@@ -433,7 +428,6 @@ export default class ProductCostBuilder {
                 if (colName === "overheadItems") this.overheadItems.push(newVal.trim());
                 
                 this.showAlert(`${newVal} added successfully!`, "success");
-                
                 const opt = document.createElement('option');
                 opt.value = newVal.trim();
                 opt.innerText = newVal.trim();
@@ -449,7 +443,6 @@ export default class ProductCostBuilder {
 
         window.addLaborSubRow = (stageId) => {
             const tbody = document.querySelector(`.labor-group[data-id="${stageId}"]`);
-            const subtotalRow = tbody.querySelector('.subtotal-row');
             const tr = document.createElement('tr');
             tr.className = 'labor-sub-row line-row';
             tr.innerHTML = `
@@ -464,13 +457,12 @@ export default class ProductCostBuilder {
                 <td class="col-num input-cell"><input type="number" class="l-comp calc-trigger" value="100" max="100" min="0"></td>
                 <td class="col-tot calc-cell l-wip">0.00</td>
             `;
-            tbody.insertBefore(tr, subtotalRow);
+            tbody.insertBefore(tr, tbody.querySelector('.subtotal-row'));
             this.calculateAll();
         };
 
         window.addOhSubRow = (stageId) => {
             const tbody = document.querySelector(`.oh-group[data-id="${stageId}"]`);
-            const subtotalRow = tbody.querySelector('.subtotal-row');
             const tr = document.createElement('tr');
             tr.className = 'oh-sub-row line-row';
             tr.innerHTML = `
@@ -485,13 +477,12 @@ export default class ProductCostBuilder {
                 <td class="col-num input-cell"><input type="number" class="o-comp calc-trigger" value="100" max="100" min="0"></td>
                 <td class="col-tot calc-cell o-wip">0.00</td>
             `;
-            tbody.insertBefore(tr, subtotalRow);
+            tbody.insertBefore(tr, tbody.querySelector('.subtotal-row'));
             this.calculateAll();
         };
 
         window.deleteSubRow = (btn) => {
-            const tr = btn.closest('tr');
-            tr.remove();
+            btn.closest('tr').remove();
             this.calculateAll();
         };
     }
@@ -542,7 +533,6 @@ export default class ProductCostBuilder {
         subTr.className = 'subtotal-row';
         subTr.innerHTML = `<td colspan="7" style="text-align: right; padding-right:10px;" class="subtotal-label">Total Stage Cost:</td><td class="col-tot calc-cell l-subtotal-val" style="font-weight:bold;">0.00</td><td colspan="2"></td>`;
         tbody.appendChild(subTr);
-
         document.getElementById('labor-table').insertBefore(tbody, document.getElementById('labor-tfoot'));
     }
 
@@ -577,16 +567,7 @@ export default class ProductCostBuilder {
         subTr.className = 'subtotal-row';
         subTr.innerHTML = `<td colspan="7" style="text-align: right; padding-right:10px;" class="subtotal-label">Total Stage Cost:</td><td class="col-tot calc-cell o-subtotal-val" style="font-weight:bold;">0.00</td><td colspan="2"></td>`;
         tbody.appendChild(subTr);
-
         document.getElementById('overhead-table').insertBefore(tbody, document.getElementById('oh-tfoot'));
-    }
-
-    attachTriggers() {
-        window.calcTrigger = () => this.calculateAll();
-        document.querySelectorAll('.calc-trigger').forEach(el => {
-            el.removeEventListener('input', window.calcTrigger);
-            el.addEventListener('input', window.calcTrigger);
-        });
     }
 
     calculateAll() {
@@ -620,7 +601,6 @@ export default class ProductCostBuilder {
         this.uniqueLineItems.clear();
         this.uniqueLineItems.add(`FGD - ${this.batchData.productName}`);
 
-        // BOM Math
         let bomTot = 0, bomWipTot = 0;
         document.querySelectorAll('.bom-row').forEach(row => {
             let q = parseFloat(row.querySelector('.b-qty').value) || 0;
@@ -638,15 +618,13 @@ export default class ProductCostBuilder {
         document.getElementById('bom_cost_total').innerText = bomTot.toFixed(2);
         document.getElementById('bom_wip_total').innerText = bomWipTot.toFixed(2);
 
-        // Labor Math & Grouping
         let labTot = 0, labWipTot = 0;
         document.querySelectorAll('.labor-group').forEach(group => {
             let sTotal = 0;
             let stageEl = group.querySelector('.l-stage');
             let stage = stageEl ? stageEl.value : 'Stage';
             
-            const rows = group.querySelectorAll('.labor-main-row, .labor-sub-row');
-            rows.forEach(row => {
+            group.querySelectorAll('.labor-main-row, .labor-sub-row').forEach(row => {
                 let mCost = parseFloat(row.querySelector('.l-mcost').value) || 0;
                 let mHrs = parseFloat(row.querySelector('.l-mhrs').value) || 1;
                 let r = mHrs > 0 ? mCost / mHrs : 0;
@@ -665,26 +643,22 @@ export default class ProductCostBuilder {
             });
             
             const subRow = group.querySelector('.subtotal-row');
-            if(rows.length > 1) {
+            if(group.querySelectorAll('tr').length > 2) {
                 subRow.style.display = 'table-row';
                 subRow.querySelector('.subtotal-label').innerText = `Total ${stage || 'Stage'} Cost:`;
                 subRow.querySelector('.l-subtotal-val').innerText = sTotal.toFixed(2);
-            } else { 
-                subRow.style.display = 'none'; 
-            }
+            } else { subRow.style.display = 'none'; }
         });
         document.getElementById('labor_cost_total').innerText = labTot.toFixed(2);
         document.getElementById('labor_wip_total').innerText = labWipTot.toFixed(2);
 
-        // OH Math & Grouping
         let ohTot = 0, ohWipTot = 0;
         document.querySelectorAll('.oh-group').forEach(group => {
             let sTotal = 0;
             let stageEl = group.querySelector('.o-stage');
             let stage = stageEl ? stageEl.value : 'Stage';
             
-            const rows = group.querySelectorAll('.oh-main-row, .oh-sub-row');
-            rows.forEach(row => {
+            group.querySelectorAll('.oh-main-row, .oh-sub-row').forEach(row => {
                 let mCost = parseFloat(row.querySelector('.o-mcost').value) || 0;
                 let mHrs = parseFloat(row.querySelector('.o-mhrs').value) || 1;
                 let r = mHrs > 0 ? mCost / mHrs : 0;
@@ -703,13 +677,11 @@ export default class ProductCostBuilder {
             });
             
             const subRow = group.querySelector('.subtotal-row');
-            if(rows.length > 1) {
+            if(group.querySelectorAll('tr').length > 2) {
                 subRow.style.display = 'table-row';
                 subRow.querySelector('.subtotal-label').innerText = `Total ${stage || 'Stage'} Cost:`;
                 subRow.querySelector('.o-subtotal-val').innerText = sTotal.toFixed(2);
-            } else { 
-                subRow.style.display = 'none'; 
-            }
+            } else { subRow.style.display = 'none'; }
         });
         document.getElementById('oh_cost_total').innerText = ohTot.toFixed(2);
         document.getElementById('oh_wip_total').innerText = ohWipTot.toFixed(2);
@@ -731,26 +703,6 @@ export default class ProductCostBuilder {
 
         if(document.getElementById('costingTabContent').innerHTML.trim() !== "") {
             this.renderActiveTab();
-        }
-    }
-
-    async loadCategories() {
-        this.categoriesDict = {};
-        try {
-            const defaultSnap = await getDocs(collection(db, "category"));
-            defaultSnap.forEach(doc => { 
-                this.categoriesDict[doc.id] = { category: doc.data().category, accountType: doc.data().accountType || "", source: 'default' }; 
-            });
-        } catch (e) {}
-
-        const qboSelect = document.getElementById('qboSelect');
-        if (qboSelect && qboSelect.value && currentUser) {
-            try {
-                const companySnap = await getDocs(collection(db, `qbo_companies/${qboSelect.value}/category_mappings`));
-                companySnap.forEach(doc => {
-                    this.categoriesDict[doc.id] = { category: doc.data().category, accountType: doc.data().accountType || "", source: 'company' };
-                });
-            } catch (e) {}
         }
     }
 
@@ -777,7 +729,6 @@ export default class ProductCostBuilder {
                 <tbody>
         `;
 
-        const debitAccount = this.batchData.isComplete ? "Finished Goods Inventory" : "Work In Progress Inventory";
         let totalWipCost = 0;
         const creditLines = [];
 
@@ -786,7 +737,8 @@ export default class ProductCostBuilder {
             const item = r.querySelector('.b-item').value;
             if (w > 0 && item && item !== "ADD_NEW") {
                 totalWipCost += w;
-                const cat = (this.categoriesDict[`RAW - ${item}`] || {}).category || '<span style="color:red">Unmapped</span>';
+                const match = this.qboAccounts.find(a => a.name.toLowerCase() === `RAW - ${item}`.toLowerCase());
+                const cat = match ? match.name : '<span style="color:red">Unmapped</span>';
                 creditLines.push(`<tr><td>${cat}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Raw Mat: ${item}</td></tr>`);
             }
         });
@@ -797,7 +749,8 @@ export default class ProductCostBuilder {
                 const func = r.querySelector('.l-func').value;
                 if (w > 0 && stage && func && stage !== "ADD_NEW" && func !== "ADD_NEW") {
                     totalWipCost += w;
-                    const cat = (this.categoriesDict[`LBR - ${stage} - ${func}`] || {}).category || '<span style="color:red">Unmapped</span>';
+                    const match = this.qboAccounts.find(a => a.name.toLowerCase() === `LBR - ${stage} - ${func}`.toLowerCase());
+                    const cat = match ? match.name : '<span style="color:red">Unmapped</span>';
                     creditLines.push(`<tr><td>${cat}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Labor: ${stage} - ${func}</td></tr>`);
                 }
             });
@@ -809,13 +762,17 @@ export default class ProductCostBuilder {
                 const lbl = r.querySelector('.o-label').value;
                 if (w > 0 && stage && lbl && stage !== "ADD_NEW" && lbl !== "ADD_NEW") {
                     totalWipCost += w;
-                    const cat = (this.categoriesDict[`FOH - ${stage} - ${lbl}`] || {}).category || '<span style="color:red">Unmapped</span>';
+                    const match = this.qboAccounts.find(a => a.name.toLowerCase() === `FOH - ${stage} - ${lbl}`.toLowerCase());
+                    const cat = match ? match.name : '<span style="color:red">Unmapped</span>';
                     creditLines.push(`<tr><td>${cat}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Overhead: ${stage} - ${lbl}</td></tr>`);
                 }
             });
         });
 
-        const debitCat = (this.categoriesDict[`FGD - ${this.batchData.productName}`] || {}).category || debitAccount;
+        const fgId = `FGD - ${this.batchData.productName}`;
+        const fgMatch = this.qboAccounts.find(a => a.name.toLowerCase() === fgId.toLowerCase());
+        const debitCat = fgMatch ? fgMatch.name : (this.batchData.isComplete ? "Finished Goods Inventory" : "Work In Progress Inventory");
+        
         html += `<tr><td><strong>${debitCat}</strong></td><td class="col-tot calc-cell" style="font-weight:bold;">${totalWipCost.toFixed(2)}</td><td></td><td>Batch ${this.batchData.batchId} Build</td></tr>`;
         html += creditLines.join('');
         html += `</tbody></table></div>`;
@@ -830,15 +787,11 @@ export default class ProductCostBuilder {
                     <input type="date" id="adjDate" style="padding:4px; margin-left:5px;">
                 </div>
                 <div>
-                    <label style="font-weight:bold;">Push Data As:</label>
-                    <select id="adjType" style="padding:4px; margin-left:5px;">
-                        <option value="Quantity">Quantity Adjustment (QtyDiff)</option>
-                        <option value="Value">Amount Adjustment (Change in Value)</option>
-                    </select>
-                </div>
-                <div>
                     <label style="font-weight:bold;">Offset Account:</label>
                     <input type="text" id="adjAccount" value="Inventory Shrinkage" style="padding:4px; margin-left:5px; width:150px;" title="The account that offsets the inventory balance changes.">
+                </div>
+                <div style="margin-left: auto;">
+                    <span style="font-size:0.85rem; color:#d35400;"><strong>Note:</strong> Pushing here creates a Quantity Adjustment in QBO. Amounts are calculated by QBO's average cost engine.</span>
                 </div>
             </div>
             <div class="table-responsive">
@@ -862,7 +815,8 @@ export default class ProductCostBuilder {
             if (w > 0 && item && item !== "ADD_NEW") {
                 totalWipCost += w;
                 const lineId = `RAW - ${item}`;
-                const cat = (this.categoriesDict[lineId] || {}).category || '<span style="color:red">Unmapped</span>';
+                const match = this.qboAccounts.find(a => a.name.toLowerCase() === lineId.toLowerCase());
+                const cat = match ? match.name : '<span style="color:red">Unmapped</span>';
                 creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-q).toFixed(2)}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-w).toFixed(2)}</td></tr>`);
             }
         });
@@ -876,7 +830,8 @@ export default class ProductCostBuilder {
                 if (w > 0 && stage && func && stage !== "ADD_NEW" && func !== "ADD_NEW") {
                     totalWipCost += w;
                     const lineId = `LBR - ${stage} - ${func}`;
-                    const cat = (this.categoriesDict[lineId] || {}).category || '<span style="color:red">Unmapped</span>';
+                    const match = this.qboAccounts.find(a => a.name.toLowerCase() === lineId.toLowerCase());
+                    const cat = match ? match.name : '<span style="color:red">Unmapped</span>';
                     creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-h).toFixed(2)}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-w).toFixed(2)}</td></tr>`);
                 }
             });
@@ -891,15 +846,16 @@ export default class ProductCostBuilder {
                 if (w > 0 && stage && lbl && stage !== "ADD_NEW" && lbl !== "ADD_NEW") {
                     totalWipCost += w;
                     const lineId = `FOH - ${stage} - ${lbl}`;
-                    const cat = (this.categoriesDict[lineId] || {}).category || '<span style="color:red">Unmapped</span>';
+                    const match = this.qboAccounts.find(a => a.name.toLowerCase() === lineId.toLowerCase());
+                    const cat = match ? match.name : '<span style="color:red">Unmapped</span>';
                     creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-h).toFixed(2)}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-w).toFixed(2)}</td></tr>`);
                 }
             });
         });
 
-        // FG Line (Debit equivalent)
         const fgId = `FGD - ${this.batchData.productName}`;
-        const debitCat = (this.categoriesDict[fgId] || {}).category || (this.batchData.isComplete ? "Finished Goods Inventory" : "Work In Progress Inventory");
+        const fgMatch = this.qboAccounts.find(a => a.name.toLowerCase() === fgId.toLowerCase());
+        const debitCat = fgMatch ? fgMatch.name : (this.batchData.isComplete ? "Finished Goods Inventory" : "Work In Progress Inventory");
         let fgQty = parseFloat(document.getElementById('y_gummies').innerText.replace(/,/g, '')) || 0;
 
         html += `<tr><td><strong>${fgId}</strong></td><td><strong>${debitCat}</strong></td><td class="calc-cell" style="font-weight:bold; color:#27ae60; text-align:right; white-space:nowrap;">+${fgQty.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="calc-cell" style="font-weight:bold; color:#27ae60; text-align:right; white-space:nowrap;">+${totalWipCost.toFixed(2)}</td></tr>`;
@@ -910,18 +866,24 @@ export default class ProductCostBuilder {
     }
 
     renderMappingTable() {
+        const fullAccountTypes = [
+            "Bank", "Accounts Receivable", "Other Current Asset", "Fixed Asset", "Other Asset", 
+            "Accounts Payable", "Credit Card", "Other Current Liability", "Long Term Liability", 
+            "Equity", "Income", "Other Income", "Cost of Goods Sold", "Expense", "Other Expense"
+        ];
+
         let html = `
             <div style="margin-bottom: 10px;">
-                <span style="font-size:0.9rem; color:#666;">Showing all ${this.uniqueLineItems.size} unique line items required for this batch. Overrides are saved specifically to the active QBO Company.</span>
+                <span style="font-size:0.9rem; color:#666;">Showing all ${this.uniqueLineItems.size} unique line items required for this batch. Data is fetched directly from QBO.</span>
             </div>
             <div class="table-responsive">
-            <table class="costing-table data-table" style="width:100% !important; min-width: 900px !important;"><thead><tr>
+            <table class="costing-table data-table" style="width:100% !important; min-width: 1000px !important;"><thead><tr>
                 <th style="text-align:left; width:20%;">Line Item</th>
-                <th style="text-align:left; width:20%;">Company QBO Account/Item Name</th>
-                <th style="text-align:left; width:15%;">Account Type</th>
-                <th style="text-align:center; width:10%;">Source</th>
-                <th style="text-align:left; width:20%;">Description</th>
-                <th style="text-align:center; width:15%;">Action</th>
+                <th style="text-align:left; width:15%;">Item Type</th>
+                <th style="text-align:left; width:25%;">Target QBO Account</th>
+                <th style="text-align:left; width:20%;">Account Type</th>
+                <th style="text-align:center; width:10%;">Status</th>
+                <th style="text-align:center; width:10%;">Action</th>
             </tr></thead><tbody>
         `;
 
@@ -931,32 +893,57 @@ export default class ProductCostBuilder {
 
         let i = 0;
         this.uniqueLineItems.forEach(lineItem => {
-            const dictEntry = this.categoriesDict[lineItem];
-            const suggestedCategory = dictEntry ? dictEntry.category : '';
-            const suggestedType = dictEntry ? dictEntry.accountType : 'Expense';
-            const mappingSource = dictEntry ? dictEntry.source : 'unmapped';
+            const itemMatch = this.qboItems.find(item => item.name.toLowerCase() === lineItem.toLowerCase());
+            const accMatch = this.qboAccounts.find(acc => acc.name.toLowerCase() === lineItem.toLowerCase());
 
-            let sourceBadge = mappingSource === 'default' ? `<span style="background:#e9ecef; padding:2px 6px; border-radius:4px; font-size:0.75rem; color:#8e44ad; font-weight:bold;">Global Default</span>` :
-                              mappingSource === 'company' ? `<span style="background:#e8f8f5; padding:2px 6px; border-radius:4px; font-size:0.75rem; color:#27ae60; font-weight:bold;">Company</span>` :
-                              `<span style="background:#fdedec; padding:2px 6px; border-radius:4px; font-size:0.75rem; color:#e74c3c; font-weight:bold;">Unmapped</span>`;
+            const itemInQbo = !!itemMatch;
+            const accInQbo = !!accMatch;
+            const isFullyMapped = itemInQbo && accInQbo;
+
+            // Generate Account Dropdown
+            let accDropdownHtml = `<select id="unmap-cat-${i}" style="padding:0.4rem; width:100%; box-sizing: border-box;" onchange="window.toggleNewAccountInput(${i}, this.value)">`;
+            accDropdownHtml += `<option value="">Select Existing QBO Account...</option>`;
+            accDropdownHtml += `<option value="ADD_NEW" style="font-weight:bold; color:var(--btn-bg);">+ Create New Account</option>`;
+            this.qboAccounts.forEach(acc => {
+                const selected = accInQbo && acc.id === accMatch.id ? 'selected' : '';
+                accDropdownHtml += `<option value="${acc.id}" data-name="${acc.name}" data-type="${acc.type}" ${selected}>${acc.name} (${acc.type})</option>`;
+            });
+            accDropdownHtml += `</select>`;
+            accDropdownHtml += `<input type="text" id="new-cat-name-${i}" placeholder="Enter new account name" style="display:none; margin-top:5px; padding:0.4rem; width:100%; box-sizing: border-box;" value="${lineItem}">`;
+
+            // Generate Full Account Type Dropdown
+            let typeDropdownHtml = `<select id="unmap-type-${i}" style="padding:0.4rem; width:100%; box-sizing: border-box;" ${accInQbo ? 'disabled' : ''}>`;
+            let defaultType = lineItem.startsWith('RAW') || lineItem.startsWith('FGD') ? 'Other Current Asset' : 'Cost of Goods Sold';
+            fullAccountTypes.forEach(t => {
+                const selected = accMatch && accMatch.type === t ? 'selected' : (t === defaultType ? 'selected' : '');
+                typeDropdownHtml += `<option value="${t}" ${selected}>${t}</option>`;
+            });
+            typeDropdownHtml += `</select>`;
+
+            // Determine Item Type
+            let defaultItemType = lineItem.startsWith('LBR') || lineItem.startsWith('FOH') ? 'Service' : 'NonInventory';
+            if (itemMatch) defaultItemType = itemMatch.type;
+            
+            let statusHtml = '';
+            if (itemInQbo) statusHtml += `<div class="qbo-badge">✅ Item in QBO</div>`;
+            if (accInQbo) statusHtml += `<div class="qbo-badge" style="margin-top:3px;">✅ Account in QBO</div>`;
+            if (!itemInQbo && !accInQbo) statusHtml = `<span style="color:#e74c3c; font-size:0.8rem;">Unmapped</span>`;
 
             html += `<tr>
                 <td style="white-space:normal; word-wrap: break-word;"><strong>${lineItem}</strong></td>
-                <td><input type="text" id="unmap-cat-${i}" value="${suggestedCategory}" placeholder="QBO Target Name" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
                 <td>
-                    <select id="unmap-type-${i}" style="padding:0.4rem; width:100%; box-sizing: border-box;">
-                        <option value="Income" ${suggestedType === 'Income' ? 'selected' : ''}>Income</option>
-                        <option value="Expense" ${suggestedType === 'Expense' ? 'selected' : ''}>Expense</option>
-                        <option value="Bank" ${suggestedType === 'Bank' ? 'selected' : ''}>Bank / Clearing</option>
-                        <option value="Other Current Asset" ${suggestedType === 'Other Current Asset' || suggestedType === 'OtherCurrentAsset' ? 'selected' : ''}>Other Current Asset</option>
-                        <option value="Cost of Goods Sold" ${suggestedType === 'Cost of Goods Sold' || suggestedType === 'CostOfGoodsSold' ? 'selected' : ''}>Cost of Goods Sold</option>
+                    <select id="item-type-${i}" style="padding:0.4rem; width:100%; box-sizing: border-box;" ${itemInQbo ? 'disabled' : ''}>
+                        <option value="NonInventory" ${defaultItemType === 'NonInventory' ? 'selected' : ''}>Non-Inventory</option>
+                        <option value="Service" ${defaultItemType === 'Service' ? 'selected' : ''}>Service</option>
+                        <option value="Inventory" ${defaultItemType === 'Inventory' ? 'selected' : ''}>Inventory</option>
+                        <option value="Bundle" ${defaultItemType === 'Bundle' ? 'selected' : ''}>Bundle</option>
                     </select>
                 </td>
-                <td style="text-align:center;">${sourceBadge}</td>
-                <td><input type="text" id="unmap-desc-${i}" placeholder="Optional notes" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
+                <td>${accDropdownHtml}</td>
+                <td>${typeDropdownHtml}</td>
+                <td style="text-align:center;">${statusHtml}</td>
                 <td style="text-align:center; display:flex; gap:5px; justify-content:center;">
-                    <button class="btn" style="background:#27ae60; color:white; font-weight:bold; padding:0.4rem 0.8rem; border-radius:3px;" onclick="window.pushAndSaveCostingMapping('${lineItem}', ${i}, '${suggestedCategory}')">Save</button>
-                    <button class="btn outline" style="padding:0.4rem 0.8rem; border-radius:3px;" onclick="window.viewMappingHistory('${lineItem}')">📜 History</button>
+                    <button class="btn" style="background:${isFullyMapped ? '#95a5a6' : '#27ae60'}; color:white; font-weight:bold; padding:0.4rem 0.8rem; border-radius:3px;" onclick="window.pushToQboMapping('${lineItem}', ${i})" ${isFullyMapped ? 'disabled' : ''}>Save to QBO</button>
                 </td>
             </tr>`;
             i++;
@@ -965,83 +952,85 @@ export default class ProductCostBuilder {
         html += `</tbody></table></div>`;
         document.getElementById('costingTabContent').innerHTML = html;
 
-        window.viewMappingHistory = async (lineItem) => {
-            const qboSelect = document.getElementById('qboSelect');
-            if (!qboSelect || !qboSelect.value) return this.showAlert("Please connect a QBO account.", "warning");
-            const realmId = qboSelect.value;
-
-            document.getElementById('historyLineItemLabel').innerText = lineItem;
-            document.getElementById('mappingHistoryModal').style.display = 'flex';
-            const container = document.getElementById('mappingHistoryTableContainer');
-            container.innerHTML = '<p style="text-align:center; padding: 2rem;">Loading audit logs...</p>';
-
-            try {
-                const snap = await getDocs(collection(db, `qbo_companies/${realmId}/audit_logs`));
-                let logs = [];
-                snap.forEach(doc => {
-                    const data = doc.data();
-                    if (data.lineItem === lineItem) logs.push(data);
-                });
+        window.toggleNewAccountInput = (index, val) => {
+            const input = document.getElementById(`new-cat-name-${index}`);
+            const typeDropdown = document.getElementById(`unmap-type-${index}`);
+            if (val === 'ADD_NEW') {
+                input.style.display = 'block';
+                typeDropdown.disabled = false;
+            } else {
+                input.style.display = 'none';
+                typeDropdown.disabled = val !== '';
                 
-                logs.sort((a, b) => new Date(b.modifiedAt) - new Date(a.modifiedAt));
-
-                if (logs.length === 0) {
-                    container.innerHTML = '<p style="text-align:center; padding: 2rem; color: #666;">No company-specific mapping history found for this line item.</p>';
-                    return;
+                // Auto-sync the type dropdown if an existing account is chosen
+                if (val !== '') {
+                    const sel = document.getElementById(`unmap-cat-${index}`);
+                    const selectedType = sel.options[sel.selectedIndex].dataset.type;
+                    if (selectedType) typeDropdown.value = selectedType;
                 }
-
-                let logHtml = `<table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;"><thead style="background: #f8f9fa;"><tr><th style="padding: 10px; border-bottom: 2px solid #ddd;">Date</th><th style="padding: 10px; border-bottom: 2px solid #ddd;">Action</th><th style="padding: 10px; border-bottom: 2px solid #ddd;">Category Change</th><th style="padding: 10px; border-bottom: 2px solid #ddd;">User</th></tr></thead><tbody>`;
-
-                logs.forEach(log => {
-                    const dateStr = new Date(log.modifiedAt).toLocaleString();
-                    logHtml += `<tr><td style="padding: 10px; border-bottom: 1px solid #eee;">${dateStr}</td><td style="padding: 10px; border-bottom: 1px solid #eee; font-weight:bold; color: #8e44ad;">${log.action}</td><td style="padding: 10px; border-bottom: 1px solid #eee;"><span style="color:#e74c3c;">${log.oldCategory}</span> ➔ <strong style="color:#27ae60;">${log.newCategory}</strong></td><td style="padding: 10px; border-bottom: 1px solid #eee;">${log.modifiedBy}</td></tr>`;
-                });
-                logHtml += `</tbody></table>`;
-                container.innerHTML = logHtml;
-            } catch (error) {
-                container.innerHTML = '<p class="text-danger" style="text-align:center;">Failed to load history.</p>';
             }
         };
 
-        window.pushAndSaveCostingMapping = async (lineItem, index, oldCat) => {
-            const catVal = document.getElementById(`unmap-cat-${index}`).value.trim();
-            const typeVal = document.getElementById(`unmap-type-${index}`).value;
-            const descVal = document.getElementById(`unmap-desc-${index}`).value.trim();
+        window.pushToQboMapping = async (lineItem, index) => {
+            const itemTypeVal = document.getElementById(`item-type-${index}`).value;
+            const accSelect = document.getElementById(`unmap-cat-${index}`);
+            const accDropdownVal = accSelect.value;
+            const newAccName = document.getElementById(`new-cat-name-${index}`).value.trim();
+            const accTypeVal = document.getElementById(`unmap-type-${index}`).value;
             const btn = event.target;
 
-            if (!catVal) return this.showAlert("Category Name required.", "danger");
             const qboSelect = document.getElementById('qboSelect');
             if (!qboSelect || !qboSelect.value) return this.showAlert("Please connect a QBO account first.", "warning");
 
-            btn.innerText = "Saving..."; btn.disabled = true;
+            let targetAccountId = accDropdownVal;
+            let finalAccName = "";
+
+            if (accDropdownVal === 'ADD_NEW') {
+                if (!newAccName) return this.showAlert("Please enter a name for the new account.", "danger");
+                finalAccName = newAccName;
+            } else if (accDropdownVal === '') {
+                return this.showAlert("Please select an existing account or choose Add New.", "danger");
+            } else {
+                finalAccName = accSelect.options[accSelect.selectedIndex].dataset.name;
+            }
+
+            btn.innerText = "Syncing..."; btn.disabled = true;
             const realmId = qboSelect.value;
 
             try {
-                const getOrCreateQboAccount = httpsCallable(functions, 'getOrCreateQboAccount');
-                await getOrCreateQboAccount({ accountName: catVal, realmId: realmId, accountType: typeVal, description: descVal });
+                // 1. Create Account if ADD_NEW
+                if (accDropdownVal === 'ADD_NEW') {
+                    const getOrCreateQboAccount = httpsCallable(functions, 'getOrCreateQboAccount');
+                    const accRes = await getOrCreateQboAccount({ 
+                        accountName: finalAccName, 
+                        realmId: realmId, 
+                        accountType: accTypeVal 
+                    });
+                    targetAccountId = accRes.data.id;
+                }
 
-                const batch = writeBatch(db);
-                const ts = new Date().toISOString();
+                // 2. Create Item 
+                const itemMatch = this.qboItems.find(item => item.name.toLowerCase() === lineItem.toLowerCase());
+                if (!itemMatch) {
+                    const createQboItem = httpsCallable(functions, 'createQboItem');
+                    await createQboItem({
+                        realmId: realmId,
+                        itemName: lineItem,
+                        itemType: itemTypeVal,
+                        accountId: targetAccountId,
+                        isIncome: lineItem.startsWith('FGD') 
+                    });
+                }
+
+                this.showAlert(`Successfully synced "${lineItem}" with QuickBooks!`, "success");
                 
-                const mapRef = doc(db, `qbo_companies/${realmId}/category_mappings`, lineItem);
-                batch.set(mapRef, { lineItem: lineItem, category: catVal, accountType: typeVal, description: descVal, modifiedBy: currentUser.email, modifiedAt: ts }, { merge: true });
-
-                const logRef = doc(collection(db, `qbo_companies/${realmId}/audit_logs`));
-                batch.set(logRef, { action: oldCat ? "UPDATE" : "CREATE", lineItem: lineItem, oldCategory: oldCat || "UNMAPPED", newCategory: catVal, modifiedBy: currentUser.email, modifiedAt: ts });
-
-                await batch.commit();
-
-                if (!this.categoriesDict[lineItem]) this.categoriesDict[lineItem] = {};
-                this.categoriesDict[lineItem].category = catVal;
-                this.categoriesDict[lineItem].accountType = typeVal;
-                this.categoriesDict[lineItem].source = 'company';
-                
-                this.showAlert(`Saved "${catVal}"!`, "success");
+                // Refresh live data to update the UI badges!
+                await this.loadLiveQboData();
                 this.renderActiveTab(); 
 
             } catch (err) {
                 this.showAlert(err.message, "danger");
-                btn.innerText = "Save"; btn.disabled = false;
+                btn.innerText = "Save to QBO"; btn.disabled = false;
             }
         };
     }
@@ -1213,21 +1202,17 @@ export default class ProductCostBuilder {
 
             } else if (this.activeMainTab === 'adjustment_entry') {
                 const adjDate = document.getElementById('adjDate').value;
-                const adjType = document.getElementById('adjType').value;
                 const adjAccountName = document.getElementById('adjAccount').value;
                 
                 const lines = [];
                 document.querySelectorAll('#costingTabContent tbody tr').forEach(tr => {
                     const lineId = tr.cells[0].innerText.trim();
-                    const mappedTargetName = tr.cells[1].innerText.trim();
                     const qty = parseFloat(tr.cells[2].innerText.replace(/,/g, '')) || 0;
-                    const cost = parseFloat(tr.cells[3].innerText.replace(/,/g, '')) || 0;
                     
-                    if (qty !== 0 || cost !== 0) {
+                    if (qty !== 0) {
                         lines.push({
-                            itemName: mappedTargetName !== 'Unmapped' ? mappedTargetName : lineId,
-                            qtyDiff: qty.toString(),
-                            valueDiff: cost.toString() // Captures both for testing
+                            itemName: lineId, // Relies completely on exact item name now!
+                            qtyDiff: qty.toString()
                         });
                     }
                 });
@@ -1235,8 +1220,8 @@ export default class ProductCostBuilder {
                 if (lines.length === 0) throw new Error("No non-zero lines available to push.");
 
                 const pushInventoryAdjustment = httpsCallable(functions, 'pushInventoryAdjustment');
-                const res = await pushInventoryAdjustment({ realmId, lines, adjDate, adjustmentType: adjType, adjAccountName });
-                this.showAlert(`Inventory Adjustment successfully pushed! (QBO ID: ${res.data.qboResponseId})`, "success");
+                const res = await pushInventoryAdjustment({ realmId, lines, adjDate, adjAccountName });
+                this.showAlert(`Inventory Quantity Adjustment successfully pushed! (QBO ID: ${res.data.qboResponseId})`, "success");
             }
         } catch (err) {
             this.showAlert(err.message, "danger");
