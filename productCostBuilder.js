@@ -61,7 +61,7 @@ export default class ProductCostBuilder {
                 table.data-table { table-layout: fixed !important; min-width: 800px !important; }
                 table.data-table th { white-space: normal; word-wrap: break-word; line-height: 1.2; padding: 4px !important; }
                 
-                /* Column Widths (Reduced to prevent half-hidden columns) */
+                /* Column Widths */
                 .col-action { width: 30px; text-align: center; }
                 .col-num { width: 55px; text-align: center; } /* 999.99 */
                 .col-tot { width: 85px; text-align: right; } /* 9,999,999.99 */
@@ -389,14 +389,15 @@ export default class ProductCostBuilder {
         }
     }
 
+    // UPDATED: ADD_NEW is now at the top of the list
     generateSelectHtml(options, className, onchangeStr, selectedVal = "") {
         let html = `<select class="${className}" onchange="if(this.value==='ADD_NEW'){window.addNewDropdownItem(this, '${className}')} else {${onchangeStr}}">`;
         html += `<option value="">Select...</option>`;
+        html += `<option value="ADD_NEW" style="font-weight:bold; color:var(--btn-bg);">+ Add New Item</option>`;
         options.forEach(opt => {
             const isSelected = (opt === selectedVal) ? 'selected' : '';
             html += `<option value="${opt}" ${isSelected}>${opt}</option>`;
         });
-        html += `<option value="ADD_NEW" style="font-weight:bold; color:var(--btn-bg);">+ Add New Item</option>`;
         html += `</select>`;
         return html;
     }
@@ -429,7 +430,8 @@ export default class ProductCostBuilder {
                 const opt = document.createElement('option');
                 opt.value = newVal.trim();
                 opt.innerText = newVal.trim();
-                selectEl.insertBefore(opt, selectEl.lastElementChild);
+                // Because ADD_NEW is now at the top, we just append new items to the bottom
+                selectEl.appendChild(opt);
                 selectEl.value = newVal.trim();
                 this.calculateAll();
 
@@ -457,7 +459,8 @@ export default class ProductCostBuilder {
                 <td class="col-tot calc-cell l-wip">0.00</td>
             `;
             tbody.insertBefore(tr, subtotalRow);
-            this.attachTriggers();
+            // We do NOT call attachTriggers() here to avoid recursive listener buildup.
+            // Elements inserted this way will trigger via inline onchange/oninput or bubble events.
             this.calculateAll();
         };
 
@@ -479,7 +482,6 @@ export default class ProductCostBuilder {
                 <td class="col-tot calc-cell o-wip">0.00</td>
             `;
             tbody.insertBefore(tr, subtotalRow);
-            this.attachTriggers();
             this.calculateAll();
         };
 
@@ -503,6 +505,7 @@ export default class ProductCostBuilder {
             <td class="col-tot calc-cell b-wip">0.00</td>
         `;
         document.getElementById('bom-tbody').appendChild(tr);
+        // Only run attachTriggers when a parent element is added to bind the 'calc-trigger' class
         this.attachTriggers();
     }
 
