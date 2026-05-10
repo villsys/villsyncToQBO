@@ -58,7 +58,8 @@ export default class ProductCostBuilder {
                 table.simple-table td.calc-cell { background-color: var(--calc-bg); text-align: right; padding: 4px 8px !important; }
 
                 /* Table 2, 3, 4 Layout (Data Tables) */
-                table.data-table { table-layout: fixed !important; min-width: 750px !important; }
+                /* Enforcing 1000px minimum width activates the horizontal scroll bar gracefully */
+                table.data-table { table-layout: fixed !important; min-width: 1000px !important; }
                 table.data-table th { white-space: normal; word-wrap: break-word; line-height: 1.2; padding: 4px !important; }
                 
                 /* Column Widths (Fixed sizes for numbers, remaining space divides between dropdowns) */
@@ -103,7 +104,7 @@ export default class ProductCostBuilder {
             </style>
 
             <div class="container" style="padding-top: 0.25rem;">
-                <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.4rem;">VillSync to QBO: Product Cost Builder</h2>
+                <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.4rem;">VilBooks: Product Cost Builder</h2>
                 <div id="alertBox" class="alert" style="margin-bottom: 0.25rem; padding: 0.4rem;"></div>
 
                 <div class="costing-dashboard" style="position: relative; min-height: 600px;">
@@ -156,7 +157,7 @@ export default class ProductCostBuilder {
                                                 <th>Raw Material Ingredient</th>
                                                 <th class="col-num">Qty</th>
                                                 <th class="col-num">Cost/Unit</th>
-                                                <th class="col-tot">Total Batch Material Cost</th>
+                                                <th class="col-tot">Total Batch<br>Material Cost</th>
                                                 <th class="col-num">% Comp</th>
                                                 <th class="col-tot dynamic-cost-header">WIP Cost</th>
                                             </tr>
@@ -181,16 +182,18 @@ export default class ProductCostBuilder {
                                                 <th class="col-action"><button class="btn-add" id="addLaborBtn">+</button></th>
                                                 <th>Production Stage</th>
                                                 <th>Employee Function</th>
-                                                <th class="col-num">Total Rate</th>
+                                                <th class="col-tot">Total Est.<br>Labor Cost</th>
+                                                <th class="col-num">Total Est.<br>Labor Hrs</th>
+                                                <th class="col-num">Labor Rate<br>(Per Hr)</th>
                                                 <th class="col-num">Batch Hrs</th>
-                                                <th class="col-tot">Total Batch Labor Cost</th>
+                                                <th class="col-tot">Total Batch<br>Labor Cost</th>
                                                 <th class="col-num">% Comp</th>
                                                 <th class="col-tot dynamic-cost-header">WIP Cost</th>
                                             </tr>
                                         </thead>
                                         <tbody id="labor-tbody"></tbody>
                                         <tr class="total-row">
-                                            <td colspan="5" style="text-align: right; padding-right:10px;">TOTAL BATCH LABOR COST:</td>
+                                            <td colspan="7" style="text-align: right; padding-right:10px;">TOTAL BATCH LABOR COST:</td>
                                             <td class="col-tot calc-cell" id="labor_cost_total">$0.00</td>
                                             <td></td>
                                             <td class="col-tot calc-cell" id="labor_wip_total">$0.00</td>
@@ -208,16 +211,18 @@ export default class ProductCostBuilder {
                                                 <th class="col-action"><button class="btn-add" id="addOhBtn">+</button></th>
                                                 <th>Production Stage</th>
                                                 <th>Overhead Cost Label</th>
-                                                <th class="col-num">Total Rate</th>
+                                                <th class="col-tot">Total Est.<br>O.H. Cost</th>
+                                                <th class="col-num">Total Est.<br>Driver Hrs</th>
+                                                <th class="col-num">O.H. Rate<br>(Per Hr)</th>
                                                 <th class="col-num">Batch Hrs</th>
-                                                <th class="col-tot">Total Batch O.H. Cost</th>
+                                                <th class="col-tot">Total Batch<br>O.H. Cost</th>
                                                 <th class="col-num">% Comp</th>
                                                 <th class="col-tot dynamic-cost-header">WIP Cost</th>
                                             </tr>
                                         </thead>
                                         <tbody id="oh-tbody"></tbody>
                                         <tr class="total-row">
-                                            <td colspan="5" style="text-align: right; padding-right:10px;">TOTAL BATCH O.H. COST:</td>
+                                            <td colspan="7" style="text-align: right; padding-right:10px;">TOTAL BATCH O.H. COST:</td>
                                             <td class="col-tot calc-cell" id="oh_cost_total">$0.00</td>
                                             <td></td>
                                             <td class="col-tot calc-cell" id="oh_wip_total">$0.00</td>
@@ -443,14 +448,16 @@ export default class ProductCostBuilder {
         this.attachTriggers();
     }
 
-    addLaborRow(stage = "", func = "", rate = "0", bhrs = "0", comp = "100") {
+    addLaborRow(stage = "", func = "", mcost = "0", mhrs = "160", bhrs = "0", comp = "100") {
         const tr = document.createElement('tr');
         tr.className = 'labor-row line-row';
         tr.innerHTML = `
             <td class="col-action"><button class="btn-del" onclick="this.closest('tr').remove(); window.calcTrigger()">-</button></td>
             <td class="input-cell">${this.generateSelectHtml(this.productionStages, 'l-stage', 'window.calcTrigger()', stage)}</td>
             <td class="input-cell">${this.generateSelectHtml(this.laborItems, 'l-func', 'window.calcTrigger()', func)}</td>
-            <td class="col-num input-cell"><input type="number" class="l-rate calc-trigger" value="${rate}"></td>
+            <td class="col-tot input-cell"><input type="number" class="l-mcost calc-trigger" value="${mcost}"></td>
+            <td class="col-num input-cell"><input type="number" class="l-mhrs calc-trigger" value="${mhrs}"></td>
+            <td class="col-num calc-cell l-rate">0.00</td>
             <td class="col-num input-cell"><input type="number" class="l-bhrs calc-trigger" value="${bhrs}"></td>
             <td class="col-tot calc-cell l-total">0.00</td>
             <td class="col-num input-cell"><input type="number" class="l-comp calc-trigger" value="${comp}" max="100" min="0"></td>
@@ -460,14 +467,16 @@ export default class ProductCostBuilder {
         this.attachTriggers();
     }
 
-    addOhRow(stage = "", label = "", rate = "0", bhrs = "0", comp = "100") {
+    addOhRow(stage = "", label = "", mcost = "0", mhrs = "160", bhrs = "0", comp = "100") {
         const tr = document.createElement('tr');
         tr.className = 'oh-row line-row';
         tr.innerHTML = `
             <td class="col-action"><button class="btn-del" onclick="this.closest('tr').remove(); window.calcTrigger()">-</button></td>
             <td class="input-cell">${this.generateSelectHtml(this.productionStages, 'o-stage', 'window.calcTrigger()', stage)}</td>
             <td class="input-cell">${this.generateSelectHtml(this.overheadItems, 'o-label', 'window.calcTrigger()', label)}</td>
-            <td class="col-num input-cell"><input type="number" class="o-rate calc-trigger" value="${rate}"></td>
+            <td class="col-tot input-cell"><input type="number" class="o-mcost calc-trigger" value="${mcost}"></td>
+            <td class="col-num input-cell"><input type="number" class="o-mhrs calc-trigger" value="${mhrs}"></td>
+            <td class="col-num calc-cell o-rate">0.00</td>
             <td class="col-num input-cell"><input type="number" class="o-bhrs calc-trigger" value="${bhrs}"></td>
             <td class="col-tot calc-cell o-total">0.00</td>
             <td class="col-num input-cell"><input type="number" class="o-comp calc-trigger" value="${comp}" max="100" min="0"></td>
@@ -536,7 +545,11 @@ export default class ProductCostBuilder {
 
         let labTot = 0, labWipTot = 0;
         document.querySelectorAll('.labor-row').forEach(row => {
-            let r = parseFloat(row.querySelector('.l-rate').value) || 0;
+            let mCost = parseFloat(row.querySelector('.l-mcost').value) || 0;
+            let mHrs = parseFloat(row.querySelector('.l-mhrs').value) || 1;
+            let r = mHrs > 0 ? mCost / mHrs : 0;
+            row.querySelector('.l-rate').innerText = r.toFixed(2);
+            
             let h = parseFloat(row.querySelector('.l-bhrs').value) || 0;
             let comp = (parseFloat(row.querySelector('.l-comp').value) || 0) / 100;
             let stage = row.querySelector('.l-stage').value;
@@ -554,7 +567,11 @@ export default class ProductCostBuilder {
 
         let ohTot = 0, ohWipTot = 0;
         document.querySelectorAll('.oh-row').forEach(row => {
-            let r = parseFloat(row.querySelector('.o-rate').value) || 0;
+            let mCost = parseFloat(row.querySelector('.o-mcost').value) || 0;
+            let mHrs = parseFloat(row.querySelector('.o-mhrs').value) || 1;
+            let r = mHrs > 0 ? mCost / mHrs : 0;
+            row.querySelector('.o-rate').innerText = r.toFixed(2);
+            
             let h = parseFloat(row.querySelector('.o-bhrs').value) || 0;
             let comp = (parseFloat(row.querySelector('.o-comp').value) || 0) / 100;
             let stage = row.querySelector('.o-stage').value;
@@ -623,7 +640,7 @@ export default class ProductCostBuilder {
                 <input type="date" id="journalDate" style="padding:4px; margin-left:10px;">
             </div>
             <div class="table-responsive">
-            <table class="costing-table data-table" style="width:100% !important;">
+            <table class="costing-table data-table" style="width:100% !important; min-width: 600px !important;">
                 <thead><tr>
                     <th style="text-align:left; width: auto;">Account</th>
                     <th class="col-tot">Debit</th>
@@ -681,7 +698,7 @@ export default class ProductCostBuilder {
                 <input type="date" id="adjDate" style="padding:4px; margin-left:10px;">
             </div>
             <div class="table-responsive">
-            <table class="costing-table data-table" style="width:100% !important;">
+            <table class="costing-table data-table" style="width:100% !important; min-width: 600px !important;">
                 <thead><tr>
                     <th style="text-align:left; width: auto;">Line Item Generated ID</th>
                     <th style="text-align:left; width: auto;">Mapped QBO Category</th>
@@ -857,14 +874,16 @@ export default class ProductCostBuilder {
             labor: Array.from(document.querySelectorAll('.labor-row')).map(r => ({
                 stage: r.querySelector('.l-stage').value,
                 func: r.querySelector('.l-func').value,
-                rate: r.querySelector('.l-rate').value,
+                mcost: r.querySelector('.l-mcost').value,
+                mhrs: r.querySelector('.l-mhrs').value,
                 bhrs: r.querySelector('.l-bhrs').value,
                 comp: r.querySelector('.l-comp').value
             })),
             oh: Array.from(document.querySelectorAll('.oh-row')).map(r => ({
                 stage: r.querySelector('.o-stage').value,
                 label: r.querySelector('.o-label').value,
-                rate: r.querySelector('.o-rate').value,
+                mcost: r.querySelector('.o-mcost').value,
+                mhrs: r.querySelector('.o-mhrs').value,
                 bhrs: r.querySelector('.o-bhrs').value,
                 comp: r.querySelector('.o-comp').value
             }))
@@ -902,10 +921,10 @@ export default class ProductCostBuilder {
                 data.bom.forEach(r => this.addBomRow(r.item, r.qty, r.cost, r.comp));
 
                 document.getElementById('labor-tbody').innerHTML = '';
-                data.labor.forEach(r => this.addLaborRow(r.stage, r.func, r.rate, r.bhrs, r.comp));
+                data.labor.forEach(r => this.addLaborRow(r.stage, r.func, r.mcost || "0", r.mhrs || "160", r.bhrs, r.comp));
 
                 document.getElementById('oh-tbody').innerHTML = '';
-                data.oh.forEach(r => this.addOhRow(r.stage, r.label, r.rate, r.bhrs, r.comp));
+                data.oh.forEach(r => this.addOhRow(r.stage, r.label, r.mcost || "0", r.mhrs || "160", r.bhrs, r.comp));
 
                 this.calculateAll();
                 this.showAlert("JSON loaded successfully!", "success");
