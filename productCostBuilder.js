@@ -37,19 +37,24 @@ export default class ProductCostBuilder {
                 .costing-dashboard { width: 100%; background: #fff; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 8px; }
                 .costing-dashboard h2 { color: var(--header-bg); font-size: 14px; margin-top: 15px; margin-bottom: 5px; text-transform: uppercase; }
                 .main-layout { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
-                .left-column { flex: 1.5; min-width: 60%; display: flex; flex-direction: column; gap: 10px; }
-                .right-column { flex: 1; min-width: 35%; display: flex; flex-direction: column; gap: 10px; }
+                .left-column { flex: 1.5; min-width: 55%; display: flex; flex-direction: column; gap: 10px; }
+                .right-column { flex: 1; min-width: 40%; display: flex; flex-direction: column; gap: 10px; }
+                
                 .table-responsive { width: 100%; overflow-x: auto; margin-bottom: 10px; }
-                table.costing-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; table-layout: auto; }
-                table.costing-table th, table.costing-table td { border: 1px solid var(--border-color); padding: 4px; text-align: left; }
-                table.costing-table th { background-color: var(--header-bg); color: var(--header-text); text-align: center; font-weight: normal; }
+                
+                /* Layout Optimization: Removed width: 100% so tables shrink-wrap to their content */
+                table.costing-table { border-collapse: collapse; font-size: 0.85rem; table-layout: auto; }
+                table.costing-table th, table.costing-table td { border: 1px solid var(--border-color); padding: 4px 8px; text-align: left; }
+                table.costing-table th { background-color: var(--header-bg); color: var(--header-text); text-align: center; font-weight: normal; white-space: nowrap; }
                 
                 /* Column Width Optimizations */
-                .label-cell { background-color: var(--accent-bg); font-weight: bold; width: 1%; white-space: nowrap; padding-right: 15px !important; }
+                .label-cell { background-color: var(--accent-bg); font-weight: bold; white-space: nowrap; padding-right: 20px !important; }
                 .calc-cell { background-color: var(--calc-bg); text-align: right; }
-                .costing-table input { box-sizing: border-box; background-color: var(--input-bg); border: 1px solid #ccc; padding: 3px; width: 100%; }
-                .costing-table input[type="number"] { text-align: right; max-width: 90px; }
-                .costing-table select { background-color: var(--input-bg); border: 1px solid #ccc; padding: 3px; min-width: 120px; width: max-content; max-width: 100%; }
+                
+                /* Inputs & Selects naturally constrain themselves now */
+                .costing-table input { box-sizing: border-box; background-color: var(--input-bg); border: 1px solid #ccc; padding: 3px; }
+                .costing-table input[type="number"] { text-align: right; width: 80px; }
+                .costing-table select { background-color: var(--input-bg); border: 1px solid #ccc; padding: 3px; min-width: 140px; width: max-content; max-width: 300px; }
                 
                 .total-row td { font-weight: bold; background-color: var(--accent-bg); border-top: 2px solid var(--header-bg); }
                 
@@ -114,11 +119,11 @@ export default class ProductCostBuilder {
                                             <tr>
                                                 <th style="width: 30px;"><button class="btn-add" id="addBomBtn">+</button></th>
                                                 <th>Raw Material Ingredient</th>
-                                                <th style="width:60px;">Qty</th>
-                                                <th style="width:70px;">Cost/Unit</th>
-                                                <th style="width:90px;">Total Batch Material Cost</th>
-                                                <th style="width:60px;">% Comp</th>
-                                                <th style="width:90px;" class="dynamic-cost-header">WIP Cost</th>
+                                                <th>Qty</th>
+                                                <th>Cost/Unit</th>
+                                                <th>Total Batch Material Cost</th>
+                                                <th>% Comp</th>
+                                                <th class="dynamic-cost-header">WIP Cost</th>
                                             </tr>
                                         </thead>
                                         <tbody id="bom-tbody"></tbody>
@@ -141,11 +146,11 @@ export default class ProductCostBuilder {
                                                 <th style="width: 30px;"><button class="btn-add" id="addLaborBtn">+</button></th>
                                                 <th>Production Stage</th>
                                                 <th>Employee Function</th>
-                                                <th style="width:70px;">Total Rate</th>
-                                                <th style="width:60px;">Batch Hrs</th>
-                                                <th style="width:90px;">Total Batch Labor Cost</th>
-                                                <th style="width:60px;">% Comp</th>
-                                                <th style="width:90px;" class="dynamic-cost-header">WIP Cost</th>
+                                                <th>Total Rate</th>
+                                                <th>Batch Hrs</th>
+                                                <th>Total Batch Labor Cost</th>
+                                                <th>% Comp</th>
+                                                <th class="dynamic-cost-header">WIP Cost</th>
                                             </tr>
                                         </thead>
                                         <tbody id="labor-tbody"></tbody>
@@ -168,11 +173,11 @@ export default class ProductCostBuilder {
                                                 <th style="width: 30px;"><button class="btn-add" id="addOhBtn">+</button></th>
                                                 <th>Production Stage</th>
                                                 <th>Overhead Cost Label</th>
-                                                <th style="width:70px;">Total Rate</th>
-                                                <th style="width:60px;">Batch Hrs</th>
-                                                <th style="width:90px;">Total Batch O.H. Cost</th>
-                                                <th style="width:60px;">% Comp</th>
-                                                <th style="width:90px;" class="dynamic-cost-header">WIP Cost</th>
+                                                <th>Total Rate</th>
+                                                <th>Batch Hrs</th>
+                                                <th>Total Batch O.H. Cost</th>
+                                                <th>% Comp</th>
+                                                <th class="dynamic-cost-header">WIP Cost</th>
                                             </tr>
                                         </thead>
                                         <tbody id="oh-tbody"></tbody>
@@ -593,12 +598,13 @@ export default class ProductCostBuilder {
                 <label style="font-weight:bold;">Entry Date:</label>
                 <input type="date" id="journalDate" style="padding:4px; margin-left:10px;">
             </div>
-            <table class="costing-table">
+            <div class="table-responsive">
+            <table class="costing-table" style="width:100%;">
                 <thead><tr>
-                    <th>Account</th>
+                    <th style="text-align:left;">Account</th>
                     <th style="text-align:right;">Debit</th>
                     <th style="text-align:right;">Credit</th>
-                    <th>Memo</th>
+                    <th style="text-align:left;">Memo</th>
                 </tr></thead>
                 <tbody>
         `;
@@ -641,7 +647,7 @@ export default class ProductCostBuilder {
         const debitCat = (this.categoriesDict[`fgd[${this.batchData.productName}]`] || {}).category || debitAccount;
         html += `<tr><td><strong>${debitCat}</strong></td><td style="text-align:right; font-weight:bold;">${totalWipCost.toFixed(2)}</td><td></td><td>Batch ${this.batchData.batchId} Build</td></tr>`;
         html += creditLines.join('');
-        html += `</tbody></table>`;
+        html += `</tbody></table></div>`;
         document.getElementById('costingTabContent').innerHTML = html;
     }
 
@@ -651,10 +657,11 @@ export default class ProductCostBuilder {
                 <label style="font-weight:bold;">Adjustment Date:</label>
                 <input type="date" id="adjDate" style="padding:4px; margin-left:10px;">
             </div>
-            <table class="costing-table">
+            <div class="table-responsive">
+            <table class="costing-table" style="width:100%;">
                 <thead><tr>
-                    <th>Line Item Generated ID</th>
-                    <th>Mapped QBO Category</th>
+                    <th style="text-align:left;">Line Item Generated ID</th>
+                    <th style="text-align:left;">Mapped QBO Category</th>
                     <th style="text-align:right;">Cost Value</th>
                 </tr></thead>
                 <tbody>
@@ -665,7 +672,7 @@ export default class ProductCostBuilder {
             html += `<tr><td><strong>${lineItem}</strong></td><td>${cat}</td><td style="text-align:right; color:#888;">[Calculated from table]</td></tr>`;
         });
 
-        html += `</tbody></table>`;
+        html += `</tbody></table></div>`;
         document.getElementById('costingTabContent').innerHTML = html;
     }
 
@@ -675,12 +682,12 @@ export default class ProductCostBuilder {
                 <span style="font-size:0.9rem; color:#666;">Showing all ${this.uniqueLineItems.size} unique line items required for this batch. Overrides are saved specifically to the active QBO Company.</span>
             </div>
             <div class="table-responsive">
-            <table class="costing-table"><thead><tr>
-                <th>Line Item</th>
-                <th>Company QBO Account Name</th>
-                <th>Account Type</th>
+            <table class="costing-table" style="width:100%;"><thead><tr>
+                <th style="text-align:left;">Line Item</th>
+                <th style="text-align:left;">Company QBO Account Name</th>
+                <th style="text-align:left;">Account Type</th>
                 <th style="text-align:center;">Source</th>
-                <th>Description</th>
+                <th style="text-align:left;">Description</th>
                 <th style="text-align:center;">Action</th>
             </tr></thead><tbody>
         `;
@@ -715,8 +722,8 @@ export default class ProductCostBuilder {
                 <td style="text-align:center;">${sourceBadge}</td>
                 <td><input type="text" id="unmap-desc-${i}" placeholder="Optional notes" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
                 <td style="text-align:center; display:flex; gap:5px; justify-content:center;">
-                    <button class="btn" style="background:#27ae60; color:white; font-weight:bold; padding:0.4rem 0.8rem;" onclick="window.pushAndSaveCostingMapping('${lineItem}', ${i}, '${suggestedCategory}')">Save</button>
-                    <button class="btn outline" style="padding:0.4rem 0.8rem;" onclick="window.viewMappingHistory('${lineItem}')">📜 History</button>
+                    <button class="btn" style="background:#27ae60; color:white; font-weight:bold; padding:0.4rem 0.8rem; border-radius:3px;" onclick="window.pushAndSaveCostingMapping('${lineItem}', ${i}, '${suggestedCategory}')">Save</button>
+                    <button class="btn outline" style="padding:0.4rem 0.8rem; border-radius:3px;" onclick="window.viewMappingHistory('${lineItem}')">📜 History</button>
                 </td>
             </tr>`;
             i++;
@@ -864,8 +871,10 @@ export default class ProductCostBuilder {
                 document.getElementById('p_scrap').value = data.params.scrap;
                 document.getElementById('p_gpl').value = data.params.gpl;
                 document.getElementById('p_gpp').value = data.params.gpp;
-                document.getElementById('p_pack_cost').value = data.params.packCost;
-                document.getElementById('p_margin').value = data.params.margin;
+                
+                // Add checks for pricing logic incase an old JSON doesn't have it
+                if (document.getElementById('p_pack_cost') && data.params.packCost) document.getElementById('p_pack_cost').value = data.params.packCost;
+                if (document.getElementById('p_margin') && data.params.margin) document.getElementById('p_margin').value = data.params.margin;
 
                 document.getElementById('bom-tbody').innerHTML = '';
                 data.bom.forEach(r => this.addBomRow(r.item, r.qty, r.cost, r.comp));
@@ -942,9 +951,8 @@ export default class ProductCostBuilder {
         btn.disabled = true;
 
         try {
-            // Note: The specific Journal Entry API payload construction will be built 
-            // here based on the active tab (General vs Adjustment).
-            await new Promise(r => setTimeout(r, 1500)); // Simulated delay for visual feedback
+            // Placeholder: Replace with your final API calls
+            await new Promise(r => setTimeout(r, 1500)); 
             
             this.showAlert(`The ${this.activeMainTab.replace('_', ' ')} data has been successfully prepared for QBO synchronization.`, "success");
         } catch (err) {
