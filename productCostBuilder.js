@@ -61,7 +61,7 @@ export default class ProductCostBuilder {
                 table.data-table { table-layout: fixed !important; min-width: 800px !important; }
                 table.data-table th { white-space: normal; word-wrap: break-word; line-height: 1.2; padding: 4px !important; }
                 
-                /* Column Widths */
+                /* Column Widths (Reduced to prevent half-hidden columns) */
                 .col-action { width: 30px; text-align: center; }
                 .col-num { width: 55px; text-align: center; } /* 999.99 */
                 .col-tot { width: 85px; text-align: right; } /* 9,999,999.99 */
@@ -389,7 +389,6 @@ export default class ProductCostBuilder {
         }
     }
 
-    // UPDATED: ADD_NEW is now at the top of the list
     generateSelectHtml(options, className, onchangeStr, selectedVal = "") {
         let html = `<select class="${className}" onchange="if(this.value==='ADD_NEW'){window.addNewDropdownItem(this, '${className}')} else {${onchangeStr}}">`;
         html += `<option value="">Select...</option>`;
@@ -430,7 +429,6 @@ export default class ProductCostBuilder {
                 const opt = document.createElement('option');
                 opt.value = newVal.trim();
                 opt.innerText = newVal.trim();
-                // Because ADD_NEW is now at the top, we just append new items to the bottom
                 selectEl.appendChild(opt);
                 selectEl.value = newVal.trim();
                 this.calculateAll();
@@ -459,8 +457,6 @@ export default class ProductCostBuilder {
                 <td class="col-tot calc-cell l-wip">0.00</td>
             `;
             tbody.insertBefore(tr, subtotalRow);
-            // We do NOT call attachTriggers() here to avoid recursive listener buildup.
-            // Elements inserted this way will trigger via inline onchange/oninput or bubble events.
             this.calculateAll();
         };
 
@@ -505,7 +501,6 @@ export default class ProductCostBuilder {
             <td class="col-tot calc-cell b-wip">0.00</td>
         `;
         document.getElementById('bom-tbody').appendChild(tr);
-        // Only run attachTriggers when a parent element is added to bind the 'calc-trigger' class
         this.attachTriggers();
     }
 
@@ -618,7 +613,7 @@ export default class ProductCostBuilder {
         document.querySelectorAll('.dynamic-cost-header').forEach(th => th.innerText = dynamicHeader);
 
         this.uniqueLineItems.clear();
-        this.uniqueLineItems.add(`fgd[${this.batchData.productName}]`);
+        this.uniqueLineItems.add(`FGD - ${this.batchData.productName}`);
 
         // BOM Math
         let bomTot = 0, bomWipTot = 0;
@@ -627,7 +622,7 @@ export default class ProductCostBuilder {
             let c = parseFloat(row.querySelector('.b-cost').value) || 0;
             let comp = (parseFloat(row.querySelector('.b-comp').value) || 0) / 100;
             let item = row.querySelector('.b-item').value;
-            if(item && item !== "ADD_NEW") this.uniqueLineItems.add(`raw[${item}]`);
+            if(item && item !== "ADD_NEW") this.uniqueLineItems.add(`RAW - ${item}`);
             
             let tot = q * c;
             let wip = tot * comp;
@@ -655,7 +650,7 @@ export default class ProductCostBuilder {
                 let h = parseFloat(row.querySelector('.l-bhrs').value) || 0;
                 let comp = (parseFloat(row.querySelector('.l-comp').value) || 0) / 100;
                 let func = row.querySelector('.l-func').value;
-                if(stage && func && stage !== "ADD_NEW" && func !== "ADD_NEW") this.uniqueLineItems.add(`lbr[${stage}]-[${func}]`);
+                if(stage && func && stage !== "ADD_NEW" && func !== "ADD_NEW") this.uniqueLineItems.add(`LBR - ${stage} - ${func}`);
 
                 let tot = r * h;
                 let wip = tot * comp;
@@ -693,7 +688,7 @@ export default class ProductCostBuilder {
                 let h = parseFloat(row.querySelector('.o-bhrs').value) || 0;
                 let comp = (parseFloat(row.querySelector('.o-comp').value) || 0) / 100;
                 let label = row.querySelector('.o-label').value;
-                if(stage && label && stage !== "ADD_NEW" && label !== "ADD_NEW") this.uniqueLineItems.add(`foh[${stage}]-[${label}]`);
+                if(stage && label && stage !== "ADD_NEW" && label !== "ADD_NEW") this.uniqueLineItems.add(`FOH - ${stage} - ${label}`);
 
                 let tot = r * h;
                 let wip = tot * comp;
@@ -786,7 +781,7 @@ export default class ProductCostBuilder {
             const item = r.querySelector('.b-item').value;
             if (w > 0 && item && item !== "ADD_NEW") {
                 totalWipCost += w;
-                const cat = (this.categoriesDict[`raw[${item}]`] || {}).category || '<span style="color:red">Unmapped</span>';
+                const cat = (this.categoriesDict[`RAW - ${item}`] || {}).category || '<span style="color:red">Unmapped</span>';
                 creditLines.push(`<tr><td>${cat}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Raw Mat: ${item}</td></tr>`);
             }
         });
@@ -797,7 +792,7 @@ export default class ProductCostBuilder {
                 const func = r.querySelector('.l-func').value;
                 if (w > 0 && stage && func && stage !== "ADD_NEW" && func !== "ADD_NEW") {
                     totalWipCost += w;
-                    const cat = (this.categoriesDict[`lbr[${stage}]-[${func}]`] || {}).category || '<span style="color:red">Unmapped</span>';
+                    const cat = (this.categoriesDict[`LBR - ${stage} - ${func}`] || {}).category || '<span style="color:red">Unmapped</span>';
                     creditLines.push(`<tr><td>${cat}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Labor: ${stage} - ${func}</td></tr>`);
                 }
             });
@@ -809,13 +804,13 @@ export default class ProductCostBuilder {
                 const lbl = r.querySelector('.o-label').value;
                 if (w > 0 && stage && lbl && stage !== "ADD_NEW" && lbl !== "ADD_NEW") {
                     totalWipCost += w;
-                    const cat = (this.categoriesDict[`foh[${stage}]-[${lbl}]`] || {}).category || '<span style="color:red">Unmapped</span>';
+                    const cat = (this.categoriesDict[`FOH - ${stage} - ${lbl}`] || {}).category || '<span style="color:red">Unmapped</span>';
                     creditLines.push(`<tr><td>${cat}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Overhead: ${stage} - ${lbl}</td></tr>`);
                 }
             });
         });
 
-        const debitCat = (this.categoriesDict[`fgd[${this.batchData.productName}]`] || {}).category || debitAccount;
+        const debitCat = (this.categoriesDict[`FGD - ${this.batchData.productName}`] || {}).category || debitAccount;
         html += `<tr><td><strong>${debitCat}</strong></td><td class="col-tot calc-cell" style="font-weight:bold;">${totalWipCost.toFixed(2)}</td><td></td><td>Batch ${this.batchData.batchId} Build</td></tr>`;
         html += creditLines.join('');
         html += `</tbody></table></div>`;
