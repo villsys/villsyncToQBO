@@ -38,12 +38,14 @@ export default class ProductCostBuilder {
                 .costing-dashboard { width: 100%; background: #fff; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 8px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; box-sizing: border-box; overflow: hidden; }
                 .costing-dashboard h2 { color: var(--header-bg); font-size: 14px; margin-top: 15px; margin-bottom: 5px; text-transform: uppercase; }
                 
+                /* Layout Optimization */
                 .main-layout { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; width: 100%; }
                 .left-column { flex: 2.3; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
                 .right-column { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
                 
                 .table-responsive { width: 100%; overflow-x: auto; margin-bottom: 10px; display: block; }
                 
+                /* Base table reset over global styles */
                 table.costing-table { border-collapse: collapse !important; font-size: 0.85rem !important; width: 100% !important; min-width: 0 !important; }
                 table.costing-table th, table.costing-table td { border: 1px solid var(--border-color); padding: 4px 8px; text-align: left; }
                 table.costing-table th { background-color: var(--header-bg); color: var(--header-text); text-align: center; font-weight: normal; }
@@ -59,6 +61,7 @@ export default class ProductCostBuilder {
                 table.data-table { table-layout: fixed !important; min-width: 800px !important; }
                 table.data-table th { white-space: normal; word-wrap: break-word; line-height: 1.2; padding: 4px !important; }
                 
+                /* Column Widths */
                 .col-action { width: 30px; text-align: center; }
                 .col-num { width: 55px; text-align: center; } /* 999.99 */
                 .col-tot { width: 85px; text-align: right; } /* 9,999,999.99 */
@@ -68,7 +71,9 @@ export default class ProductCostBuilder {
                 table.data-table input[type="number"] { text-align: right; }
                 table.data-table td.calc-cell { background-color: var(--calc-bg); padding-right: 6px !important; text-align: right; overflow: hidden; text-overflow: ellipsis; }
 
-                input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+                /* Remove annoying number spinners */
+                input[type="number"]::-webkit-outer-spin-button,
+                input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
                 input[type="number"] { -moz-appearance: textfield; }
                 
                 .total-row td { font-weight: bold; background-color: var(--accent-bg); border-top: 2px solid var(--header-bg); }
@@ -86,6 +91,7 @@ export default class ProductCostBuilder {
                     .left-column, .right-column { flex: 1 1 100%; }
                 }
 
+                /* Mobile View: Horizontal Scroll for data tables */
                 @media (max-width: 768px) {
                     .data-table th:nth-child(1), .data-table td:nth-child(1),
                     .data-table th:nth-child(2), .data-table td:nth-child(2) {
@@ -573,12 +579,12 @@ export default class ProductCostBuilder {
     }
 
     attachTriggers() {
+        // We do not re-attach attachAddNewLogic here to prevent errors. It's handled once in attachGlobalHelpers.
         window.calcTrigger = () => this.calculateAll();
         document.querySelectorAll('.calc-trigger').forEach(el => {
             el.removeEventListener('input', window.calcTrigger);
             el.addEventListener('input', window.calcTrigger);
         });
-        this.attachAddNewLogic();
     }
 
     calculateAll() {
