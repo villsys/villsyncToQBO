@@ -509,6 +509,7 @@ export default class ProductCostBuilder {
             <td class="col-tot calc-cell b-wip">0.00</td>
         `;
         document.getElementById('bom-tbody').appendChild(tr);
+        this.attachTriggers();
     }
 
     addLaborStageGroup(stageName = "Mixing and Cooking", rowsData = [{func:"", mcost:"0", mhrs:"160", bhrs:"0", comp:"100"}]) {
@@ -544,6 +545,7 @@ export default class ProductCostBuilder {
         tbody.appendChild(subTr);
 
         document.getElementById('labor-table').insertBefore(tbody, document.getElementById('labor-tfoot'));
+        this.attachTriggers();
     }
 
     addOhStageGroup(stageName = "Mixing and Cooking", rowsData = [{label:"", mcost:"0", mhrs:"160", bhrs:"0", comp:"100"}]) {
@@ -579,6 +581,15 @@ export default class ProductCostBuilder {
         tbody.appendChild(subTr);
 
         document.getElementById('overhead-table').insertBefore(tbody, document.getElementById('oh-tfoot'));
+        this.attachTriggers();
+    }
+
+    attachTriggers() {
+        window.calcTrigger = () => this.calculateAll();
+        document.querySelectorAll('.calc-trigger').forEach(el => {
+            el.removeEventListener('input', window.calcTrigger);
+            el.addEventListener('input', window.calcTrigger);
+        });
     }
 
     calculateAll() {
@@ -825,7 +836,7 @@ export default class ProductCostBuilder {
                     <label style="font-weight:bold;">Push Data As:</label>
                     <select id="adjType" style="padding:4px; margin-left:5px;">
                         <option value="Quantity">Quantity Adjustment (QtyDiff)</option>
-                        <option value="Value">Amount Adjustment (ValueDiff)</option>
+                        <option value="Value">Amount Adjustment (Change in Value)</option>
                     </select>
                 </div>
                 <div>
@@ -855,7 +866,7 @@ export default class ProductCostBuilder {
                 totalWipCost += w;
                 const lineId = `RAW - ${item}`;
                 const cat = (this.categoriesDict[lineId] || {}).category || '<span style="color:red">Unmapped</span>';
-                creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="col-num calc-cell">${q.toFixed(2)}</td><td class="col-tot calc-cell">${w.toFixed(2)}</td></tr>`);
+                creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="col-num calc-cell">${(-q).toFixed(2)}</td><td class="col-tot calc-cell">${(-w).toFixed(2)}</td></tr>`);
             }
         });
         
@@ -869,7 +880,7 @@ export default class ProductCostBuilder {
                     totalWipCost += w;
                     const lineId = `LBR - ${stage} - ${func}`;
                     const cat = (this.categoriesDict[lineId] || {}).category || '<span style="color:red">Unmapped</span>';
-                    creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="col-num calc-cell">${h.toFixed(2)}</td><td class="col-tot calc-cell">${w.toFixed(2)}</td></tr>`);
+                    creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="col-num calc-cell">${(-h).toFixed(2)}</td><td class="col-tot calc-cell">${(-w).toFixed(2)}</td></tr>`);
                 }
             });
         });
@@ -884,7 +895,7 @@ export default class ProductCostBuilder {
                     totalWipCost += w;
                     const lineId = `FOH - ${stage} - ${lbl}`;
                     const cat = (this.categoriesDict[lineId] || {}).category || '<span style="color:red">Unmapped</span>';
-                    creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="col-num calc-cell">${h.toFixed(2)}</td><td class="col-tot calc-cell">${w.toFixed(2)}</td></tr>`);
+                    creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="col-num calc-cell">${(-h).toFixed(2)}</td><td class="col-tot calc-cell">${(-w).toFixed(2)}</td></tr>`);
                 }
             });
         });
@@ -894,7 +905,7 @@ export default class ProductCostBuilder {
         const debitCat = (this.categoriesDict[fgId] || {}).category || (this.batchData.isComplete ? "Finished Goods Inventory" : "Work In Progress Inventory");
         let fgQty = parseFloat(document.getElementById('y_gummies').innerText.replace(/,/g, '')) || 0;
 
-        html += `<tr><td><strong>${fgId}</strong></td><td><strong>${debitCat}</strong></td><td class="col-num calc-cell" style="font-weight:bold;">${fgQty.toLocaleString()}</td><td class="col-tot calc-cell" style="font-weight:bold;">${totalWipCost.toFixed(2)}</td></tr>`;
+        html += `<tr><td><strong>${fgId}</strong></td><td><strong>${debitCat}</strong></td><td class="col-num calc-cell" style="font-weight:bold; color:#27ae60;">+${fgQty.toLocaleString()}</td><td class="col-tot calc-cell" style="font-weight:bold; color:#27ae60;">+${totalWipCost.toFixed(2)}</td></tr>`;
         
         html += creditLines.join('');
         html += `</tbody></table></div>`;
@@ -1211,22 +1222,18 @@ export default class ProductCostBuilder {
                 const lines = [];
                 document.querySelectorAll('#costingTabContent tbody tr').forEach(tr => {
                     const lineId = tr.cells[0].innerText.trim();
-                    // We grab the user-mapped text directly from column index 1 to send to QBO.
                     const mappedTargetName = tr.cells[1].innerText.trim();
                     
+                    // We no longer need to multiply by -1 or +1 because the numbers are explicitly 
+                    // negative or positive right inside the HTML table text!
                     const qty = parseFloat(tr.cells[2].innerText.replace(/,/g, '')) || 0;
                     const cost = parseFloat(tr.cells[3].innerText.replace(/,/g, '')) || 0;
                     
-                    // Additions are positive, Deductions (materials/labor) are negative.
-                    const isAddition = lineId.startsWith('FGD');
-                    const multiplier = isAddition ? 1 : -1;
-                    
-                    if (qty > 0 || cost > 0) {
+                    if (qty !== 0 || cost !== 0) {
                         lines.push({
-                            // If unmapped, default to the generated ID as a fallback, otherwise send the literal target name
                             itemName: mappedTargetName !== 'Unmapped' ? mappedTargetName : lineId,
-                            qtyDiff: (qty * multiplier).toString(),
-                            valueDiff: (cost * multiplier).toString()
+                            qtyDiff: qty.toString(),
+                            valueDiff: cost.toString()
                         });
                     }
                 });
