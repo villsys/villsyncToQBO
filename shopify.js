@@ -59,7 +59,7 @@ export default class Shopify {
             </style>
             
             <div class="container" style="padding-top: 0.25rem;">
-                <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.4rem;">VilSync: Shopify Integrator</h2>
+                <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.4rem;">VilSync to QBO: Shopify Integrator</h2>
                 <p style="color: #666; font-size: 0.85rem; margin-top: 0;">Upload your <strong>orders_export.csv</strong> (for Sales Receipts) or <strong>payment_transactions_export.csv</strong> (for Payouts & Fees) exactly as downloaded, without any edits.</p>
                 <div id="alertBox" class="alert" style="margin-bottom: 0.25rem; padding: 0.4rem;"></div>
 
