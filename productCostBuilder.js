@@ -104,7 +104,7 @@ export default class ProductCostBuilder {
             </style>
 
             <div class="container" style="padding-top: 0.25rem;">
-                <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.4rem;">VilBooks: Product Cost Builder</h2>
+                <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.4rem;">VillSync to QB: Product Cost Builder</h2>
                 <div id="alertBox" class="alert" style="margin-bottom: 0.25rem; padding: 0.4rem;"></div>
 
                 <div class="costing-dashboard" style="position: relative; min-height: 600px;">
@@ -509,7 +509,6 @@ export default class ProductCostBuilder {
             <td class="col-tot calc-cell b-wip">0.00</td>
         `;
         document.getElementById('bom-tbody').appendChild(tr);
-        this.attachTriggers();
     }
 
     addLaborStageGroup(stageName = "Mixing and Cooking", rowsData = [{func:"", mcost:"0", mhrs:"160", bhrs:"0", comp:"100"}]) {
@@ -545,7 +544,6 @@ export default class ProductCostBuilder {
         tbody.appendChild(subTr);
 
         document.getElementById('labor-table').insertBefore(tbody, document.getElementById('labor-tfoot'));
-        this.attachTriggers();
     }
 
     addOhStageGroup(stageName = "Mixing and Cooking", rowsData = [{label:"", mcost:"0", mhrs:"160", bhrs:"0", comp:"100"}]) {
@@ -581,7 +579,6 @@ export default class ProductCostBuilder {
         tbody.appendChild(subTr);
 
         document.getElementById('overhead-table').insertBefore(tbody, document.getElementById('oh-tfoot'));
-        this.attachTriggers();
     }
 
     attachTriggers() {
@@ -845,12 +842,12 @@ export default class ProductCostBuilder {
                 </div>
             </div>
             <div class="table-responsive">
-            <table class="costing-table data-table" style="width:100% !important; min-width: 600px !important;">
+            <table class="costing-table data-table" style="width:100% !important; min-width: 700px !important;">
                 <thead><tr>
                     <th style="text-align:left; width: auto;">Line Item Generated ID</th>
                     <th style="text-align:left; width: auto;">Mapped QBO Category</th>
-                    <th class="col-num">Qty / Hrs</th>
-                    <th class="col-tot">Cost Value</th>
+                    <th style="text-align:right; width: 120px;">Qty / Hrs</th>
+                    <th style="text-align:right; width: 120px;">Cost Value</th>
                 </tr></thead>
                 <tbody>
         `;
@@ -866,7 +863,7 @@ export default class ProductCostBuilder {
                 totalWipCost += w;
                 const lineId = `RAW - ${item}`;
                 const cat = (this.categoriesDict[lineId] || {}).category || '<span style="color:red">Unmapped</span>';
-                creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="col-num calc-cell">${(-q).toFixed(2)}</td><td class="col-tot calc-cell">${(-w).toFixed(2)}</td></tr>`);
+                creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-q).toFixed(2)}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-w).toFixed(2)}</td></tr>`);
             }
         });
         
@@ -880,7 +877,7 @@ export default class ProductCostBuilder {
                     totalWipCost += w;
                     const lineId = `LBR - ${stage} - ${func}`;
                     const cat = (this.categoriesDict[lineId] || {}).category || '<span style="color:red">Unmapped</span>';
-                    creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="col-num calc-cell">${(-h).toFixed(2)}</td><td class="col-tot calc-cell">${(-w).toFixed(2)}</td></tr>`);
+                    creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-h).toFixed(2)}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-w).toFixed(2)}</td></tr>`);
                 }
             });
         });
@@ -895,7 +892,7 @@ export default class ProductCostBuilder {
                     totalWipCost += w;
                     const lineId = `FOH - ${stage} - ${lbl}`;
                     const cat = (this.categoriesDict[lineId] || {}).category || '<span style="color:red">Unmapped</span>';
-                    creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="col-num calc-cell">${(-h).toFixed(2)}</td><td class="col-tot calc-cell">${(-w).toFixed(2)}</td></tr>`);
+                    creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-h).toFixed(2)}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-w).toFixed(2)}</td></tr>`);
                 }
             });
         });
@@ -905,7 +902,7 @@ export default class ProductCostBuilder {
         const debitCat = (this.categoriesDict[fgId] || {}).category || (this.batchData.isComplete ? "Finished Goods Inventory" : "Work In Progress Inventory");
         let fgQty = parseFloat(document.getElementById('y_gummies').innerText.replace(/,/g, '')) || 0;
 
-        html += `<tr><td><strong>${fgId}</strong></td><td><strong>${debitCat}</strong></td><td class="col-num calc-cell" style="font-weight:bold; color:#27ae60;">+${fgQty.toLocaleString()}</td><td class="col-tot calc-cell" style="font-weight:bold; color:#27ae60;">+${totalWipCost.toFixed(2)}</td></tr>`;
+        html += `<tr><td><strong>${fgId}</strong></td><td><strong>${debitCat}</strong></td><td class="calc-cell" style="font-weight:bold; color:#27ae60; text-align:right; white-space:nowrap;">+${fgQty.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="calc-cell" style="font-weight:bold; color:#27ae60; text-align:right; white-space:nowrap;">+${totalWipCost.toFixed(2)}</td></tr>`;
         
         html += creditLines.join('');
         html += `</tbody></table></div>`;
@@ -1223,9 +1220,6 @@ export default class ProductCostBuilder {
                 document.querySelectorAll('#costingTabContent tbody tr').forEach(tr => {
                     const lineId = tr.cells[0].innerText.trim();
                     const mappedTargetName = tr.cells[1].innerText.trim();
-                    
-                    // We no longer need to multiply by -1 or +1 because the numbers are explicitly 
-                    // negative or positive right inside the HTML table text!
                     const qty = parseFloat(tr.cells[2].innerText.replace(/,/g, '')) || 0;
                     const cost = parseFloat(tr.cells[3].innerText.replace(/,/g, '')) || 0;
                     
@@ -1233,7 +1227,7 @@ export default class ProductCostBuilder {
                         lines.push({
                             itemName: mappedTargetName !== 'Unmapped' ? mappedTargetName : lineId,
                             qtyDiff: qty.toString(),
-                            valueDiff: cost.toString()
+                            valueDiff: cost.toString() // Captures both for testing
                         });
                     }
                 });
