@@ -38,14 +38,12 @@ export default class ProductCostBuilder {
                 .costing-dashboard { width: 100%; background: #fff; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 8px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; box-sizing: border-box; overflow: hidden; }
                 .costing-dashboard h2 { color: var(--header-bg); font-size: 14px; margin-top: 15px; margin-bottom: 5px; text-transform: uppercase; }
                 
-                /* Layout Optimization */
                 .main-layout { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; width: 100%; }
                 .left-column { flex: 2.3; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
                 .right-column { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
                 
                 .table-responsive { width: 100%; overflow-x: auto; margin-bottom: 10px; display: block; }
                 
-                /* Base table reset over global styles */
                 table.costing-table { border-collapse: collapse !important; font-size: 0.85rem !important; width: 100% !important; min-width: 0 !important; }
                 table.costing-table th, table.costing-table td { border: 1px solid var(--border-color); padding: 4px 8px; text-align: left; }
                 table.costing-table th { background-color: var(--header-bg); color: var(--header-text); text-align: center; font-weight: normal; }
@@ -61,7 +59,6 @@ export default class ProductCostBuilder {
                 table.data-table { table-layout: fixed !important; min-width: 800px !important; }
                 table.data-table th { white-space: normal; word-wrap: break-word; line-height: 1.2; padding: 4px !important; }
                 
-                /* Column Widths (Reduced to prevent half-hidden columns) */
                 .col-action { width: 30px; text-align: center; }
                 .col-num { width: 55px; text-align: center; } /* 999.99 */
                 .col-tot { width: 85px; text-align: right; } /* 9,999,999.99 */
@@ -71,12 +68,11 @@ export default class ProductCostBuilder {
                 table.data-table input[type="number"] { text-align: right; }
                 table.data-table td.calc-cell { background-color: var(--calc-bg); padding-right: 6px !important; text-align: right; overflow: hidden; text-overflow: ellipsis; }
 
-                /* Remove annoying number spinners */
-                input[type="number"]::-webkit-outer-spin-button,
-                input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+                input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
                 input[type="number"] { -moz-appearance: textfield; }
                 
                 .total-row td { font-weight: bold; background-color: var(--accent-bg); border-top: 2px solid var(--header-bg); }
+                .subtotal-row td { background-color: #E8F0FE !important; font-style: italic; border-top: 1px dashed #1F4E78 !important; }
                 
                 .toolbar { display: flex; gap: 10px; margin-bottom: 15px; background: #e9ecef; padding: 8px 10px; border-radius: 5px; flex-wrap: wrap; align-items: center; }
                 .btn-add { background-color: var(--btn-bg); color: white; border: none; padding: 2px 8px; cursor: pointer; border-radius: 3px; font-weight:bold; }
@@ -90,7 +86,6 @@ export default class ProductCostBuilder {
                     .left-column, .right-column { flex: 1 1 100%; }
                 }
 
-                /* Mobile View: Horizontal Scroll for data tables */
                 @media (max-width: 768px) {
                     .data-table th:nth-child(1), .data-table td:nth-child(1),
                     .data-table th:nth-child(2), .data-table td:nth-child(2) {
@@ -103,7 +98,7 @@ export default class ProductCostBuilder {
             </style>
 
             <div class="container" style="padding-top: 0.25rem;">
-                <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.4rem;">VillSync to QBO: Product Cost Builder</h2>
+                <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.4rem;">VilBooks: Product Cost Builder</h2>
                 <div id="alertBox" class="alert" style="margin-bottom: 0.25rem; padding: 0.4rem;"></div>
 
                 <div class="costing-dashboard" style="position: relative; min-height: 600px;">
@@ -162,12 +157,14 @@ export default class ProductCostBuilder {
                                             </tr>
                                         </thead>
                                         <tbody id="bom-tbody"></tbody>
-                                        <tr class="total-row">
-                                            <td colspan="4" style="text-align: right; padding-right:10px;">TOTAL RAW MATERIAL COST:</td>
-                                            <td class="col-tot calc-cell" id="bom_cost_total">$0.00</td>
-                                            <td></td>
-                                            <td class="col-tot calc-cell" id="bom_wip_total">$0.00</td>
-                                        </tr>
+                                        <tfoot id="bom-tfoot">
+                                            <tr class="total-row">
+                                                <td colspan="4" style="text-align: right; padding-right:10px;">TOTAL RAW MATERIAL COST:</td>
+                                                <td class="col-tot calc-cell" id="bom_cost_total">$0.00</td>
+                                                <td></td>
+                                                <td class="col-tot calc-cell" id="bom_wip_total">$0.00</td>
+                                            </tr>
+                                        </tfoot>
                                     </table>
                                 </div>
                             </div>
@@ -190,13 +187,14 @@ export default class ProductCostBuilder {
                                                 <th class="col-tot dynamic-cost-header">WIP Cost</th>
                                             </tr>
                                         </thead>
-                                        <tbody id="labor-tbody"></tbody>
-                                        <tr class="total-row">
-                                            <td colspan="7" style="text-align: right; padding-right:10px;">TOTAL BATCH LABOR COST:</td>
-                                            <td class="col-tot calc-cell" id="labor_cost_total">$0.00</td>
-                                            <td></td>
-                                            <td class="col-tot calc-cell" id="labor_wip_total">$0.00</td>
-                                        </tr>
+                                        <tfoot id="labor-tfoot">
+                                            <tr class="total-row">
+                                                <td colspan="7" style="text-align: right; padding-right:10px;">TOTAL BATCH LABOR COST:</td>
+                                                <td class="col-tot calc-cell" id="labor_cost_total">$0.00</td>
+                                                <td></td>
+                                                <td class="col-tot calc-cell" id="labor_wip_total">$0.00</td>
+                                            </tr>
+                                        </tfoot>
                                     </table>
                                 </div>
                             </div>
@@ -219,13 +217,14 @@ export default class ProductCostBuilder {
                                                 <th class="col-tot dynamic-cost-header">WIP Cost</th>
                                             </tr>
                                         </thead>
-                                        <tbody id="oh-tbody"></tbody>
-                                        <tr class="total-row">
-                                            <td colspan="7" style="text-align: right; padding-right:10px;">TOTAL BATCH O.H. COST:</td>
-                                            <td class="col-tot calc-cell" id="oh_cost_total">$0.00</td>
-                                            <td></td>
-                                            <td class="col-tot calc-cell" id="oh_wip_total">$0.00</td>
-                                        </tr>
+                                        <tfoot id="oh-tfoot">
+                                            <tr class="total-row">
+                                                <td colspan="7" style="text-align: right; padding-right:10px;">TOTAL BATCH O.H. COST:</td>
+                                                <td class="col-tot calc-cell" id="oh_cost_total">$0.00</td>
+                                                <td></td>
+                                                <td class="col-tot calc-cell" id="oh_wip_total">$0.00</td>
+                                            </tr>
+                                        </tfoot>
                                     </table>
                                 </div>
                             </div>
@@ -317,12 +316,15 @@ export default class ProductCostBuilder {
                 this.calculateAll();
             });
         }
+        
         await this.loadCategories();
         await this.loadDropdownCollections();
 
+        this.attachGlobalHelpers();
+
         document.getElementById('addBomBtn').addEventListener('click', () => this.addBomRow());
-        document.getElementById('addLaborBtn').addEventListener('click', () => this.addLaborRow());
-        document.getElementById('addOhBtn').addEventListener('click', () => this.addOhRow());
+        document.getElementById('addLaborBtn').addEventListener('click', () => this.addLaborStageGroup());
+        document.getElementById('addOhBtn').addEventListener('click', () => this.addOhStageGroup());
 
         document.querySelectorAll('.calc-trigger').forEach(el => el.addEventListener('input', () => this.calculateAll()));
 
@@ -335,9 +337,10 @@ export default class ProductCostBuilder {
             });
         });
 
+        // Initialize Defaults
         this.addBomRow();
-        this.addLaborRow();
-        this.addOhRow();
+        this.addLaborStageGroup();
+        this.addOhStageGroup();
     }
 
     async checkUserRole() {
@@ -392,7 +395,7 @@ export default class ProductCostBuilder {
         return html;
     }
 
-    attachAddNewLogic() {
+    attachGlobalHelpers() {
         window.addNewDropdownItem = async (selectEl, className) => {
             const newVal = prompt("Enter the name of the new item:");
             if (!newVal || newVal.trim() === "") {
@@ -429,6 +432,56 @@ export default class ProductCostBuilder {
                 selectEl.value = "";
             }
         };
+
+        window.addLaborSubRow = (stageId) => {
+            const tbody = document.querySelector(`.labor-group[data-id="${stageId}"]`);
+            const subtotalRow = tbody.querySelector('.subtotal-row');
+            const tr = document.createElement('tr');
+            tr.className = 'labor-sub-row line-row';
+            tr.innerHTML = `
+                <td class="col-action"><button class="btn-del" onclick="window.deleteSubRow(this)">-</button></td>
+                <td class="input-cell"></td>
+                <td class="input-cell">${this.generateSelectHtml(this.laborItems, 'l-func', 'window.calcTrigger()')}</td>
+                <td class="col-tot input-cell"><input type="number" class="l-mcost calc-trigger" value="0"></td>
+                <td class="col-num input-cell"><input type="number" class="l-mhrs calc-trigger" value="160"></td>
+                <td class="col-num calc-cell l-rate">0.00</td>
+                <td class="col-num input-cell"><input type="number" class="l-bhrs calc-trigger" value="0"></td>
+                <td class="col-tot calc-cell l-total">0.00</td>
+                <td class="col-num input-cell"><input type="number" class="l-comp calc-trigger" value="100" max="100" min="0"></td>
+                <td class="col-tot calc-cell l-wip">0.00</td>
+            `;
+            tbody.insertBefore(tr, subtotalRow);
+            this.attachTriggers();
+            this.calculateAll();
+        };
+
+        window.addOhSubRow = (stageId) => {
+            const tbody = document.querySelector(`.oh-group[data-id="${stageId}"]`);
+            const subtotalRow = tbody.querySelector('.subtotal-row');
+            const tr = document.createElement('tr');
+            tr.className = 'oh-sub-row line-row';
+            tr.innerHTML = `
+                <td class="col-action"><button class="btn-del" onclick="window.deleteSubRow(this)">-</button></td>
+                <td class="input-cell"></td>
+                <td class="input-cell">${this.generateSelectHtml(this.overheadItems, 'o-label', 'window.calcTrigger()')}</td>
+                <td class="col-tot input-cell"><input type="number" class="o-mcost calc-trigger" value="0"></td>
+                <td class="col-num input-cell"><input type="number" class="o-mhrs calc-trigger" value="160"></td>
+                <td class="col-num calc-cell o-rate">0.00</td>
+                <td class="col-num input-cell"><input type="number" class="o-bhrs calc-trigger" value="0"></td>
+                <td class="col-tot calc-cell o-total">0.00</td>
+                <td class="col-num input-cell"><input type="number" class="o-comp calc-trigger" value="100" max="100" min="0"></td>
+                <td class="col-tot calc-cell o-wip">0.00</td>
+            `;
+            tbody.insertBefore(tr, subtotalRow);
+            this.attachTriggers();
+            this.calculateAll();
+        };
+
+        window.deleteSubRow = (btn) => {
+            const tr = btn.closest('tr');
+            tr.remove();
+            this.calculateAll();
+        };
     }
 
     addBomRow(item = "", qty = "0", cost = "0", comp = "100") {
@@ -447,41 +500,75 @@ export default class ProductCostBuilder {
         this.attachTriggers();
     }
 
-    addLaborRow(stage = "", func = "", mcost = "0", mhrs = "160", bhrs = "0", comp = "100") {
-        const tr = document.createElement('tr');
-        tr.className = 'labor-row line-row';
-        tr.innerHTML = `
-            <td class="col-action"><button class="btn-del" onclick="this.closest('tr').remove(); window.calcTrigger()">-</button></td>
-            <td class="input-cell">${this.generateSelectHtml(this.productionStages, 'l-stage', 'window.calcTrigger()', stage)}</td>
-            <td class="input-cell">${this.generateSelectHtml(this.laborItems, 'l-func', 'window.calcTrigger()', func)}</td>
-            <td class="col-tot input-cell"><input type="number" class="l-mcost calc-trigger" value="${mcost}"></td>
-            <td class="col-num input-cell"><input type="number" class="l-mhrs calc-trigger" value="${mhrs}"></td>
-            <td class="col-num calc-cell l-rate">0.00</td>
-            <td class="col-num input-cell"><input type="number" class="l-bhrs calc-trigger" value="${bhrs}"></td>
-            <td class="col-tot calc-cell l-total">0.00</td>
-            <td class="col-num input-cell"><input type="number" class="l-comp calc-trigger" value="${comp}" max="100" min="0"></td>
-            <td class="col-tot calc-cell l-wip">0.00</td>
-        `;
-        document.getElementById('labor-tbody').appendChild(tr);
+    addLaborStageGroup(stageName = "", rowsData = [{func:"", mcost:"0", mhrs:"160", bhrs:"0", comp:"100"}]) {
+        const stageId = 'L_' + Math.random().toString(36).substr(2, 9);
+        const tbody = document.createElement('tbody');
+        tbody.className = 'labor-group';
+        tbody.setAttribute('data-id', stageId);
+
+        rowsData.forEach((rData, index) => {
+            const tr = document.createElement('tr');
+            tr.className = index === 0 ? 'labor-main-row line-row' : 'labor-sub-row line-row';
+            let btnHtml = index === 0 ? `<button class="btn-add" onclick="window.addLaborSubRow('${stageId}')">+</button>` : `<button class="btn-del" onclick="window.deleteSubRow(this)">-</button>`;
+            let stageHtml = index === 0 ? this.generateSelectHtml(this.productionStages, 'l-stage', 'window.calcTrigger()', stageName) : ``;
+
+            tr.innerHTML = `
+                <td class="col-action">${btnHtml}</td>
+                <td class="input-cell">${stageHtml}</td>
+                <td class="input-cell">${this.generateSelectHtml(this.laborItems, 'l-func', 'window.calcTrigger()', rData.func)}</td>
+                <td class="col-tot input-cell"><input type="number" class="l-mcost calc-trigger" value="${rData.mcost}"></td>
+                <td class="col-num input-cell"><input type="number" class="l-mhrs calc-trigger" value="${rData.mhrs}"></td>
+                <td class="col-num calc-cell l-rate">0.00</td>
+                <td class="col-num input-cell"><input type="number" class="l-bhrs calc-trigger" value="${rData.bhrs}"></td>
+                <td class="col-tot calc-cell l-total">0.00</td>
+                <td class="col-num input-cell"><input type="number" class="l-comp calc-trigger" value="${rData.comp}" max="100" min="0"></td>
+                <td class="col-tot calc-cell l-wip">0.00</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        const subTr = document.createElement('tr');
+        subTr.className = 'subtotal-row';
+        subTr.innerHTML = `<td colspan="7" style="text-align: right; padding-right:10px;" class="subtotal-label">Total Stage Cost:</td><td class="col-tot calc-cell l-subtotal-val" style="font-weight:bold;">0.00</td><td colspan="2"></td>`;
+        tbody.appendChild(subTr);
+
+        document.getElementById('labor-table').insertBefore(tbody, document.getElementById('labor-tfoot'));
         this.attachTriggers();
     }
 
-    addOhRow(stage = "", label = "", mcost = "0", mhrs = "160", bhrs = "0", comp = "100") {
-        const tr = document.createElement('tr');
-        tr.className = 'oh-row line-row';
-        tr.innerHTML = `
-            <td class="col-action"><button class="btn-del" onclick="this.closest('tr').remove(); window.calcTrigger()">-</button></td>
-            <td class="input-cell">${this.generateSelectHtml(this.productionStages, 'o-stage', 'window.calcTrigger()', stage)}</td>
-            <td class="input-cell">${this.generateSelectHtml(this.overheadItems, 'o-label', 'window.calcTrigger()', label)}</td>
-            <td class="col-tot input-cell"><input type="number" class="o-mcost calc-trigger" value="${mcost}"></td>
-            <td class="col-num input-cell"><input type="number" class="o-mhrs calc-trigger" value="${mhrs}"></td>
-            <td class="col-num calc-cell o-rate">0.00</td>
-            <td class="col-num input-cell"><input type="number" class="o-bhrs calc-trigger" value="${bhrs}"></td>
-            <td class="col-tot calc-cell o-total">0.00</td>
-            <td class="col-num input-cell"><input type="number" class="o-comp calc-trigger" value="${comp}" max="100" min="0"></td>
-            <td class="col-tot calc-cell o-wip">0.00</td>
-        `;
-        document.getElementById('oh-tbody').appendChild(tr);
+    addOhStageGroup(stageName = "", rowsData = [{label:"", mcost:"0", mhrs:"160", bhrs:"0", comp:"100"}]) {
+        const stageId = 'O_' + Math.random().toString(36).substr(2, 9);
+        const tbody = document.createElement('tbody');
+        tbody.className = 'oh-group';
+        tbody.setAttribute('data-id', stageId);
+
+        rowsData.forEach((rData, index) => {
+            const tr = document.createElement('tr');
+            tr.className = index === 0 ? 'oh-main-row line-row' : 'oh-sub-row line-row';
+            let btnHtml = index === 0 ? `<button class="btn-add" onclick="window.addOhSubRow('${stageId}')">+</button>` : `<button class="btn-del" onclick="window.deleteSubRow(this)">-</button>`;
+            let stageHtml = index === 0 ? this.generateSelectHtml(this.productionStages, 'o-stage', 'window.calcTrigger()', stageName) : ``;
+
+            tr.innerHTML = `
+                <td class="col-action">${btnHtml}</td>
+                <td class="input-cell">${stageHtml}</td>
+                <td class="input-cell">${this.generateSelectHtml(this.overheadItems, 'o-label', 'window.calcTrigger()', rData.label)}</td>
+                <td class="col-tot input-cell"><input type="number" class="o-mcost calc-trigger" value="${rData.mcost}"></td>
+                <td class="col-num input-cell"><input type="number" class="o-mhrs calc-trigger" value="${rData.mhrs}"></td>
+                <td class="col-num calc-cell o-rate">0.00</td>
+                <td class="col-num input-cell"><input type="number" class="o-bhrs calc-trigger" value="${rData.bhrs}"></td>
+                <td class="col-tot calc-cell o-total">0.00</td>
+                <td class="col-num input-cell"><input type="number" class="o-comp calc-trigger" value="${rData.comp}" max="100" min="0"></td>
+                <td class="col-tot calc-cell o-wip">0.00</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        const subTr = document.createElement('tr');
+        subTr.className = 'subtotal-row';
+        subTr.innerHTML = `<td colspan="7" style="text-align: right; padding-right:10px;" class="subtotal-label">Total Stage Cost:</td><td class="col-tot calc-cell o-subtotal-val" style="font-weight:bold;">0.00</td><td colspan="2"></td>`;
+        tbody.appendChild(subTr);
+
+        document.getElementById('overhead-table').insertBefore(tbody, document.getElementById('oh-tfoot'));
         this.attachTriggers();
     }
 
@@ -525,6 +612,7 @@ export default class ProductCostBuilder {
         this.uniqueLineItems.clear();
         this.uniqueLineItems.add(`fgd[${this.batchData.productName}]`);
 
+        // BOM Math
         let bomTot = 0, bomWipTot = 0;
         document.querySelectorAll('.bom-row').forEach(row => {
             let q = parseFloat(row.querySelector('.b-qty').value) || 0;
@@ -542,46 +630,78 @@ export default class ProductCostBuilder {
         document.getElementById('bom_cost_total').innerText = bomTot.toFixed(2);
         document.getElementById('bom_wip_total').innerText = bomWipTot.toFixed(2);
 
+        // Labor Math & Grouping
         let labTot = 0, labWipTot = 0;
-        document.querySelectorAll('.labor-row').forEach(row => {
-            let mCost = parseFloat(row.querySelector('.l-mcost').value) || 0;
-            let mHrs = parseFloat(row.querySelector('.l-mhrs').value) || 1;
-            let r = mHrs > 0 ? mCost / mHrs : 0;
-            row.querySelector('.l-rate').innerText = r.toFixed(2);
+        document.querySelectorAll('.labor-group').forEach(group => {
+            let sTotal = 0;
+            let stageEl = group.querySelector('.l-stage');
+            let stage = stageEl ? stageEl.value : 'Stage';
             
-            let h = parseFloat(row.querySelector('.l-bhrs').value) || 0;
-            let comp = (parseFloat(row.querySelector('.l-comp').value) || 0) / 100;
-            let stage = row.querySelector('.l-stage').value;
-            let func = row.querySelector('.l-func').value;
-            if(stage && func && stage !== "ADD_NEW" && func !== "ADD_NEW") this.uniqueLineItems.add(`lbr[${stage}]-[${func}]`);
+            const rows = group.querySelectorAll('.labor-main-row, .labor-sub-row');
+            rows.forEach(row => {
+                let mCost = parseFloat(row.querySelector('.l-mcost').value) || 0;
+                let mHrs = parseFloat(row.querySelector('.l-mhrs').value) || 1;
+                let r = mHrs > 0 ? mCost / mHrs : 0;
+                row.querySelector('.l-rate').innerText = r.toFixed(2);
+                
+                let h = parseFloat(row.querySelector('.l-bhrs').value) || 0;
+                let comp = (parseFloat(row.querySelector('.l-comp').value) || 0) / 100;
+                let func = row.querySelector('.l-func').value;
+                if(stage && func && stage !== "ADD_NEW" && func !== "ADD_NEW") this.uniqueLineItems.add(`lbr[${stage}]-[${func}]`);
 
-            let tot = r * h;
-            let wip = tot * comp;
-            labTot += tot; labWipTot += wip;
-            row.querySelector('.l-total').innerText = tot.toFixed(2);
-            row.querySelector('.l-wip').innerText = wip.toFixed(2);
+                let tot = r * h;
+                let wip = tot * comp;
+                sTotal += tot; labTot += tot; labWipTot += wip;
+                row.querySelector('.l-total').innerText = tot.toFixed(2);
+                row.querySelector('.l-wip').innerText = wip.toFixed(2);
+            });
+            
+            const subRow = group.querySelector('.subtotal-row');
+            if(rows.length > 1) {
+                subRow.style.display = 'table-row';
+                subRow.querySelector('.subtotal-label').innerText = `Total ${stage || 'Stage'} Cost:`;
+                subRow.querySelector('.l-subtotal-val').innerText = sTotal.toFixed(2);
+            } else { 
+                subRow.style.display = 'none'; 
+            }
         });
         document.getElementById('labor_cost_total').innerText = labTot.toFixed(2);
         document.getElementById('labor_wip_total').innerText = labWipTot.toFixed(2);
 
+        // OH Math & Grouping
         let ohTot = 0, ohWipTot = 0;
-        document.querySelectorAll('.oh-row').forEach(row => {
-            let mCost = parseFloat(row.querySelector('.o-mcost').value) || 0;
-            let mHrs = parseFloat(row.querySelector('.o-mhrs').value) || 1;
-            let r = mHrs > 0 ? mCost / mHrs : 0;
-            row.querySelector('.o-rate').innerText = r.toFixed(2);
+        document.querySelectorAll('.oh-group').forEach(group => {
+            let sTotal = 0;
+            let stageEl = group.querySelector('.o-stage');
+            let stage = stageEl ? stageEl.value : 'Stage';
             
-            let h = parseFloat(row.querySelector('.o-bhrs').value) || 0;
-            let comp = (parseFloat(row.querySelector('.o-comp').value) || 0) / 100;
-            let stage = row.querySelector('.o-stage').value;
-            let label = row.querySelector('.o-label').value;
-            if(stage && label && stage !== "ADD_NEW" && label !== "ADD_NEW") this.uniqueLineItems.add(`foh[${stage}]-[${label}]`);
+            const rows = group.querySelectorAll('.oh-main-row, .oh-sub-row');
+            rows.forEach(row => {
+                let mCost = parseFloat(row.querySelector('.o-mcost').value) || 0;
+                let mHrs = parseFloat(row.querySelector('.o-mhrs').value) || 1;
+                let r = mHrs > 0 ? mCost / mHrs : 0;
+                row.querySelector('.o-rate').innerText = r.toFixed(2);
+                
+                let h = parseFloat(row.querySelector('.o-bhrs').value) || 0;
+                let comp = (parseFloat(row.querySelector('.o-comp').value) || 0) / 100;
+                let label = row.querySelector('.o-label').value;
+                if(stage && label && stage !== "ADD_NEW" && label !== "ADD_NEW") this.uniqueLineItems.add(`foh[${stage}]-[${label}]`);
 
-            let tot = r * h;
-            let wip = tot * comp;
-            ohTot += tot; ohWipTot += wip;
-            row.querySelector('.o-total').innerText = tot.toFixed(2);
-            row.querySelector('.o-wip').innerText = wip.toFixed(2);
+                let tot = r * h;
+                let wip = tot * comp;
+                sTotal += tot; ohTot += tot; ohWipTot += wip;
+                row.querySelector('.o-total').innerText = tot.toFixed(2);
+                row.querySelector('.o-wip').innerText = wip.toFixed(2);
+            });
+            
+            const subRow = group.querySelector('.subtotal-row');
+            if(rows.length > 1) {
+                subRow.style.display = 'table-row';
+                subRow.querySelector('.subtotal-label').innerText = `Total ${stage || 'Stage'} Cost:`;
+                subRow.querySelector('.o-subtotal-val').innerText = sTotal.toFixed(2);
+            } else { 
+                subRow.style.display = 'none'; 
+            }
         });
         document.getElementById('oh_cost_total').innerText = ohTot.toFixed(2);
         document.getElementById('oh_wip_total').innerText = ohWipTot.toFixed(2);
@@ -662,25 +782,29 @@ export default class ProductCostBuilder {
                 creditLines.push(`<tr><td>${cat}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Raw Mat: ${item}</td></tr>`);
             }
         });
-        document.querySelectorAll('.labor-row').forEach(r => {
-            const w = parseFloat(r.querySelector('.l-wip').innerText) || 0;
-            const stage = r.querySelector('.l-stage').value;
-            const func = r.querySelector('.l-func').value;
-            if (w > 0 && stage && func && stage !== "ADD_NEW" && func !== "ADD_NEW") {
-                totalWipCost += w;
-                const cat = (this.categoriesDict[`lbr[${stage}]-[${func}]`] || {}).category || '<span style="color:red">Unmapped</span>';
-                creditLines.push(`<tr><td>${cat}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Labor: ${stage} - ${func}</td></tr>`);
-            }
+        document.querySelectorAll('.labor-group').forEach(g => {
+            const stage = g.querySelector('.l-stage').value;
+            g.querySelectorAll('.labor-main-row, .labor-sub-row').forEach(r => {
+                const w = parseFloat(r.querySelector('.l-wip').innerText) || 0;
+                const func = r.querySelector('.l-func').value;
+                if (w > 0 && stage && func && stage !== "ADD_NEW" && func !== "ADD_NEW") {
+                    totalWipCost += w;
+                    const cat = (this.categoriesDict[`lbr[${stage}]-[${func}]`] || {}).category || '<span style="color:red">Unmapped</span>';
+                    creditLines.push(`<tr><td>${cat}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Labor: ${stage} - ${func}</td></tr>`);
+                }
+            });
         });
-        document.querySelectorAll('.oh-row').forEach(r => {
-            const w = parseFloat(r.querySelector('.o-wip').innerText) || 0;
-            const stage = r.querySelector('.o-stage').value;
-            const lbl = r.querySelector('.o-label').value;
-            if (w > 0 && stage && lbl && stage !== "ADD_NEW" && lbl !== "ADD_NEW") {
-                totalWipCost += w;
-                const cat = (this.categoriesDict[`foh[${stage}]-[${lbl}]`] || {}).category || '<span style="color:red">Unmapped</span>';
-                creditLines.push(`<tr><td>${cat}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Overhead: ${stage} - ${lbl}</td></tr>`);
-            }
+        document.querySelectorAll('.oh-group').forEach(g => {
+            const stage = g.querySelector('.o-stage').value;
+            g.querySelectorAll('.oh-main-row, .oh-sub-row').forEach(r => {
+                const w = parseFloat(r.querySelector('.o-wip').innerText) || 0;
+                const lbl = r.querySelector('.o-label').value;
+                if (w > 0 && stage && lbl && stage !== "ADD_NEW" && lbl !== "ADD_NEW") {
+                    totalWipCost += w;
+                    const cat = (this.categoriesDict[`foh[${stage}]-[${lbl}]`] || {}).category || '<span style="color:red">Unmapped</span>';
+                    creditLines.push(`<tr><td>${cat}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Overhead: ${stage} - ${lbl}</td></tr>`);
+                }
+            });
         });
 
         const debitCat = (this.categoriesDict[`fgd[${this.batchData.productName}]`] || {}).category || debitAccount;
@@ -870,21 +994,25 @@ export default class ProductCostBuilder {
                 cost: r.querySelector('.b-cost').value,
                 comp: r.querySelector('.b-comp').value
             })),
-            labor: Array.from(document.querySelectorAll('.labor-row')).map(r => ({
-                stage: r.querySelector('.l-stage').value,
-                func: r.querySelector('.l-func').value,
-                mcost: r.querySelector('.l-mcost').value,
-                mhrs: r.querySelector('.l-mhrs').value,
-                bhrs: r.querySelector('.l-bhrs').value,
-                comp: r.querySelector('.l-comp').value
+            labor: Array.from(document.querySelectorAll('.labor-group')).map(g => ({
+                stageName: g.querySelector('.l-stage').value,
+                rows: Array.from(g.querySelectorAll('.labor-main-row, .labor-sub-row')).map(r => ({
+                    func: r.querySelector('.l-func').value,
+                    mcost: r.querySelector('.l-mcost').value,
+                    mhrs: r.querySelector('.l-mhrs').value,
+                    bhrs: r.querySelector('.l-bhrs').value,
+                    comp: r.querySelector('.l-comp').value
+                }))
             })),
-            oh: Array.from(document.querySelectorAll('.oh-row')).map(r => ({
-                stage: r.querySelector('.o-stage').value,
-                label: r.querySelector('.o-label').value,
-                mcost: r.querySelector('.o-mcost').value,
-                mhrs: r.querySelector('.o-mhrs').value,
-                bhrs: r.querySelector('.o-bhrs').value,
-                comp: r.querySelector('.o-comp').value
+            oh: Array.from(document.querySelectorAll('.oh-group')).map(g => ({
+                stageName: g.querySelector('.o-stage').value,
+                rows: Array.from(g.querySelectorAll('.oh-main-row, .oh-sub-row')).map(r => ({
+                    label: r.querySelector('.o-label').value,
+                    mcost: r.querySelector('.o-mcost').value,
+                    mhrs: r.querySelector('.o-mhrs').value,
+                    bhrs: r.querySelector('.o-bhrs').value,
+                    comp: r.querySelector('.o-comp').value
+                }))
             }))
         };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -919,11 +1047,11 @@ export default class ProductCostBuilder {
                 document.getElementById('bom-tbody').innerHTML = '';
                 data.bom.forEach(r => this.addBomRow(r.item, r.qty, r.cost, r.comp));
 
-                document.getElementById('labor-tbody').innerHTML = '';
-                data.labor.forEach(r => this.addLaborRow(r.stage, r.func, r.mcost || "0", r.mhrs || "160", r.bhrs, r.comp));
+                document.querySelectorAll('.labor-group').forEach(e => e.remove());
+                if(data.labor) data.labor.forEach(g => this.addLaborStageGroup(g.stageName, g.rows));
 
-                document.getElementById('oh-tbody').innerHTML = '';
-                data.oh.forEach(r => this.addOhRow(r.stage, r.label, r.mcost || "0", r.mhrs || "160", r.bhrs, r.comp));
+                document.querySelectorAll('.oh-group').forEach(e => e.remove());
+                if(data.oh) data.oh.forEach(g => this.addOhStageGroup(g.stageName, g.rows));
 
                 this.calculateAll();
                 this.showAlert("JSON loaded successfully!", "success");
