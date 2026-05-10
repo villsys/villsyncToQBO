@@ -316,7 +316,6 @@ export default class ProductCostBuilder {
             this.calculateAll();
         });
 
-        // The new direct load from JSON listeners
         document.getElementById('modalLoadJsonInput').addEventListener('change', (e) => this.loadFromJson(e));
         document.getElementById('loadJsonInput').addEventListener('change', (e) => this.loadFromJson(e));
         
@@ -443,7 +442,7 @@ export default class ProductCostBuilder {
                 this.calculateAll();
 
             } catch (e) {
-                this.showAlert("Failed to add new item.", "danger");
+                this.showAlert(`Failed to add new item. ${e.message}`, "danger");
                 selectEl.value = "";
             }
         };
@@ -510,10 +509,9 @@ export default class ProductCostBuilder {
             <td class="col-tot calc-cell b-wip">0.00</td>
         `;
         document.getElementById('bom-tbody').appendChild(tr);
-        this.attachTriggers();
     }
 
-    addLaborStageGroup(stageName = "", rowsData = [{func:"", mcost:"0", mhrs:"160", bhrs:"0", comp:"100"}]) {
+    addLaborStageGroup(stageName = "Mixing and Cooking", rowsData = [{func:"", mcost:"0", mhrs:"160", bhrs:"0", comp:"100"}]) {
         const stageId = 'L_' + Math.random().toString(36).substr(2, 9);
         const tbody = document.createElement('tbody');
         tbody.className = 'labor-group';
@@ -546,10 +544,9 @@ export default class ProductCostBuilder {
         tbody.appendChild(subTr);
 
         document.getElementById('labor-table').insertBefore(tbody, document.getElementById('labor-tfoot'));
-        this.attachTriggers();
     }
 
-    addOhStageGroup(stageName = "", rowsData = [{label:"", mcost:"0", mhrs:"160", bhrs:"0", comp:"100"}]) {
+    addOhStageGroup(stageName = "Mixing and Cooking", rowsData = [{label:"", mcost:"0", mhrs:"160", bhrs:"0", comp:"100"}]) {
         const stageId = 'O_' + Math.random().toString(36).substr(2, 9);
         const tbody = document.createElement('tbody');
         tbody.className = 'oh-group';
@@ -582,15 +579,6 @@ export default class ProductCostBuilder {
         tbody.appendChild(subTr);
 
         document.getElementById('overhead-table').insertBefore(tbody, document.getElementById('oh-tfoot'));
-        this.attachTriggers();
-    }
-
-    attachTriggers() {
-        window.calcTrigger = () => this.calculateAll();
-        document.querySelectorAll('.calc-trigger').forEach(el => {
-            el.removeEventListener('input', window.calcTrigger);
-            el.addEventListener('input', window.calcTrigger);
-        });
     }
 
     calculateAll() {
@@ -828,9 +816,22 @@ export default class ProductCostBuilder {
 
     renderAdjustmentTab() {
         let html = `
-            <div style="margin-bottom: 10px;">
-                <label style="font-weight:bold;">Adjustment Date:</label>
-                <input type="date" id="adjDate" style="padding:4px; margin-left:10px;">
+            <div style="margin-bottom: 10px; display:flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                <div>
+                    <label style="font-weight:bold;">Adjustment Date:</label>
+                    <input type="date" id="adjDate" style="padding:4px; margin-left:5px;">
+                </div>
+                <div>
+                    <label style="font-weight:bold;">Push Data As:</label>
+                    <select id="adjType" style="padding:4px; margin-left:5px;">
+                        <option value="Quantity">Quantity Adjustment (QtyDiff)</option>
+                        <option value="Value">Amount Adjustment (ValueDiff)</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-weight:bold;">Offset Account:</label>
+                    <input type="text" id="adjAccount" value="Inventory Shrinkage" style="padding:4px; margin-left:5px; width:150px;" title="The account that offsets the inventory balance changes.">
+                </div>
             </div>
             <div class="table-responsive">
             <table class="costing-table data-table" style="width:100% !important; min-width: 600px !important;">
@@ -843,10 +844,9 @@ export default class ProductCostBuilder {
                 <tbody>
         `;
 
-        const creditLines = [];
         let totalWipCost = 0;
+        const creditLines = [];
 
-        // Collect BOM
         document.querySelectorAll('.bom-row').forEach(r => {
             const w = parseFloat(r.querySelector('.b-wip').innerText) || 0;
             const q = parseFloat(r.querySelector('.b-qty').value) || 0;
@@ -858,8 +858,7 @@ export default class ProductCostBuilder {
                 creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="col-num calc-cell">${q.toFixed(2)}</td><td class="col-tot calc-cell">${w.toFixed(2)}</td></tr>`);
             }
         });
-
-        // Collect Labor
+        
         document.querySelectorAll('.labor-group').forEach(g => {
             const stage = g.querySelector('.l-stage').value;
             g.querySelectorAll('.labor-main-row, .labor-sub-row').forEach(r => {
@@ -874,8 +873,7 @@ export default class ProductCostBuilder {
                 }
             });
         });
-
-        // Collect Overhead
+        
         document.querySelectorAll('.oh-group').forEach(g => {
             const stage = g.querySelector('.o-stage').value;
             g.querySelectorAll('.oh-main-row, .oh-sub-row').forEach(r => {
@@ -894,29 +892,11 @@ export default class ProductCostBuilder {
         // FG Line (Debit equivalent)
         const fgId = `FGD - ${this.batchData.productName}`;
         const debitCat = (this.categoriesDict[fgId] || {}).category || (this.batchData.isComplete ? "Finished Goods Inventory" : "Work In Progress Inventory");
-        
-        // Grab the actual calculated quantity from the Yield table
-        let fgQty = parseFloat(document.getElementById('y_gummies').innerText.replace(/,/g, '')) || 0; 
+        let fgQty = parseFloat(document.getElementById('y_gummies').innerText.replace(/,/g, '')) || 0;
 
         html += `<tr><td><strong>${fgId}</strong></td><td><strong>${debitCat}</strong></td><td class="col-num calc-cell" style="font-weight:bold;">${fgQty.toLocaleString()}</td><td class="col-tot calc-cell" style="font-weight:bold;">${totalWipCost.toFixed(2)}</td></tr>`;
         
         html += creditLines.join('');
-        html += `</tbody></table></div>`;
-        document.getElementById('costingTabContent').innerHTML = html;
-    } <table class="costing-table data-table" style="width:100% !important; min-width: 600px !important;">
-                <thead><tr>
-                    <th style="text-align:left; width: auto;">Line Item Generated ID</th>
-                    <th style="text-align:left; width: auto;">Mapped QBO Category</th>
-                    <th class="col-tot">Cost Value</th>
-                </tr></thead>
-                <tbody>
-        `;
-
-        this.uniqueLineItems.forEach(lineItem => {
-            const cat = (this.categoriesDict[lineItem] || {}).category || '<span style="color:red">Unmapped</span>';
-            html += `<tr><td><strong>${lineItem}</strong></td><td>${cat}</td><td class="col-tot calc-cell" style="color:#888;">[Calculated]</td></tr>`;
-        });
-
         html += `</tbody></table></div>`;
         document.getElementById('costingTabContent').innerHTML = html;
     }
@@ -929,7 +909,7 @@ export default class ProductCostBuilder {
             <div class="table-responsive">
             <table class="costing-table data-table" style="width:100% !important; min-width: 900px !important;"><thead><tr>
                 <th style="text-align:left; width:20%;">Line Item</th>
-                <th style="text-align:left; width:20%;">Company QBO Account Name</th>
+                <th style="text-align:left; width:20%;">Company QBO Account/Item Name</th>
                 <th style="text-align:left; width:15%;">Account Type</th>
                 <th style="text-align:center; width:10%;">Source</th>
                 <th style="text-align:left; width:20%;">Description</th>
@@ -954,14 +934,14 @@ export default class ProductCostBuilder {
 
             html += `<tr>
                 <td style="white-space:normal; word-wrap: break-word;"><strong>${lineItem}</strong></td>
-                <td><input type="text" id="unmap-cat-${i}" value="${suggestedCategory}" placeholder="QBO Account Name" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
+                <td><input type="text" id="unmap-cat-${i}" value="${suggestedCategory}" placeholder="QBO Target Name" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
                 <td>
                     <select id="unmap-type-${i}" style="padding:0.4rem; width:100%; box-sizing: border-box;">
                         <option value="Income" ${suggestedType === 'Income' ? 'selected' : ''}>Income</option>
                         <option value="Expense" ${suggestedType === 'Expense' ? 'selected' : ''}>Expense</option>
                         <option value="Bank" ${suggestedType === 'Bank' ? 'selected' : ''}>Bank / Clearing</option>
-                        <option value="OtherCurrentAsset" ${suggestedType === 'OtherCurrentAsset' ? 'selected' : ''}>Other Current Asset</option>
-                        <option value="CostOfGoodsSold" ${suggestedType === 'CostOfGoodsSold' ? 'selected' : ''}>Cost of Goods Sold</option>
+                        <option value="Other Current Asset" ${suggestedType === 'Other Current Asset' || suggestedType === 'OtherCurrentAsset' ? 'selected' : ''}>Other Current Asset</option>
+                        <option value="Cost of Goods Sold" ${suggestedType === 'Cost of Goods Sold' || suggestedType === 'CostOfGoodsSold' ? 'selected' : ''}>Cost of Goods Sold</option>
                     </select>
                 </td>
                 <td style="text-align:center;">${sourceBadge}</td>
@@ -1201,8 +1181,62 @@ export default class ProductCostBuilder {
         btn.disabled = true;
 
         try {
-            await new Promise(r => setTimeout(r, 1500)); 
-            this.showAlert(`The ${this.activeMainTab.replace('_', ' ')} data has been successfully prepared for QBO synchronization.`, "success");
+            const realmId = qboSelect.value;
+            
+            if (this.activeMainTab === 'general_journal') {
+                const txnDate = document.getElementById('journalDate').value;
+                const lines = [];
+                
+                document.querySelectorAll('#costingTabContent tbody tr').forEach(tr => {
+                    const accName = tr.cells[0].innerText.trim();
+                    const debit = parseFloat(tr.cells[1].innerText.replace(/,/g, '')) || 0;
+                    const credit = parseFloat(tr.cells[2].innerText.replace(/,/g, '')) || 0;
+                    const memo = tr.cells[3].innerText.trim();
+                    
+                    if (debit > 0) lines.push({ description: memo, amount: debit, postingType: "Debit", accountName: accName });
+                    if (credit > 0) lines.push({ description: memo, amount: credit, postingType: "Credit", accountName: accName });
+                });
+
+                if (lines.length === 0) throw new Error("No non-zero costs available to push.");
+
+                const pushCostingJournalEntry = httpsCallable(functions, 'pushCostingJournalEntry');
+                const res = await pushCostingJournalEntry({ realmId, lines, txnDate, privateNote: `VilBooks Costing: Batch ${this.batchData.batchId}` });
+                this.showAlert(`Journal Entry successfully pushed! (QBO ID: ${res.data.qboResponseId})`, "success");
+
+            } else if (this.activeMainTab === 'adjustment_entry') {
+                const adjDate = document.getElementById('adjDate').value;
+                const adjType = document.getElementById('adjType').value;
+                const adjAccountName = document.getElementById('adjAccount').value;
+                
+                const lines = [];
+                document.querySelectorAll('#costingTabContent tbody tr').forEach(tr => {
+                    const lineId = tr.cells[0].innerText.trim();
+                    // We grab the user-mapped text directly from column index 1 to send to QBO.
+                    const mappedTargetName = tr.cells[1].innerText.trim();
+                    
+                    const qty = parseFloat(tr.cells[2].innerText.replace(/,/g, '')) || 0;
+                    const cost = parseFloat(tr.cells[3].innerText.replace(/,/g, '')) || 0;
+                    
+                    // Additions are positive, Deductions (materials/labor) are negative.
+                    const isAddition = lineId.startsWith('FGD');
+                    const multiplier = isAddition ? 1 : -1;
+                    
+                    if (qty > 0 || cost > 0) {
+                        lines.push({
+                            // If unmapped, default to the generated ID as a fallback, otherwise send the literal target name
+                            itemName: mappedTargetName !== 'Unmapped' ? mappedTargetName : lineId,
+                            qtyDiff: (qty * multiplier).toString(),
+                            valueDiff: (cost * multiplier).toString()
+                        });
+                    }
+                });
+
+                if (lines.length === 0) throw new Error("No non-zero lines available to push.");
+
+                const pushInventoryAdjustment = httpsCallable(functions, 'pushInventoryAdjustment');
+                const res = await pushInventoryAdjustment({ realmId, lines, adjDate, adjustmentType: adjType, adjAccountName });
+                this.showAlert(`Inventory Adjustment successfully pushed! (QBO ID: ${res.data.qboResponseId})`, "success");
+            }
         } catch (err) {
             this.showAlert(err.message, "danger");
         } finally {
