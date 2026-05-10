@@ -95,7 +95,7 @@ export default class ProductCostBuilder {
             </style>
 
             <div class="container" style="padding-top: 0.25rem;">
-                <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.4rem;">VilBooks to QBO: Product Cost Builder</h2>
+                <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.4rem;">VillSync to QB: Product Cost Builder</h2>
                 <div id="alertBox" class="alert" style="margin-bottom: 0.25rem; padding: 0.4rem;"></div>
 
                 <div class="costing-dashboard" style="position: relative; min-height: 600px;">
@@ -126,7 +126,6 @@ export default class ProductCostBuilder {
                             📂 Load JSON <input type="file" id="loadJsonInput" accept=".json" style="display:none;">
                         </label>
                         <button class="btn" id="exportExcelBtn" style="background-color: #207245; padding: 6px 12px;">📊 Export to Excel</button>
-                        <button class="btn" id="pushQboBtn" style="background-color: #3498db; margin-left: auto; padding: 6px 16px;" disabled>☁️ Push to QBO</button>
                     </div>
 
                     <div class="main-layout">
@@ -267,13 +266,30 @@ export default class ProductCostBuilder {
                     </div>
 
                     <div style="margin-top: 2rem;">
-                        <div class="tabs main-tabs" style="border-bottom: 2px solid #27ae60; margin-bottom: 0; display:flex;">
+                        <div id="pushStatusBar" style="background: #f8f9fa; border: 1px solid #dee2e6; border-left: 4px solid #27ae60; padding: 0.4rem 1rem; margin-bottom: 0.5rem; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; flex-wrap: wrap; gap: 10px;">
+                            <span id="pushStatusText" style="font-weight: 500; color: #2c3e50;">Loading user profile...</span>
+                            <span id="limitText" style="color: #666; font-weight: bold; margin-left: auto;"></span>
+                        </div>
+                    
+                        <div class="tabs main-tabs" style="border-bottom: 2px solid #27ae60; margin-bottom: 0; display:flex; align-items: center; flex-wrap: wrap;">
                             <button class="tab active" data-maintab="general_journal">General Journal</button>
-                            <button class="tab" data-maintab="adjustment_entry">Adjustment Entry</button>
+                            <button class="tab" data-maintab="adjustment_entry">Inventory Adjustment</button>
                             <button class="tab" data-maintab="mapping" style="color: #e74c3c;">Mapping</button>
+                            
+                            <button class="btn" id="pushQboBtn" style="background-color: #27ae60; color: white; margin-left: auto; padding: 6px 16px; margin-bottom: 4px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;" disabled>☁️ Push Entry to QBO</button>
                         </div>
                         <div id="costingTabContent" style="background:#f8f9fa; border:1px solid #dee2e6; border-top:none; padding:1rem;">
                             </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="mappingHistoryModal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; align-items:center; justify-content:center;">
+                <div class="modal-content" style="background:#fff; padding:2rem; border-radius:8px; width:90%; max-width:800px;">
+                    <h2 style="margin-top:0;">Audit History: <span id="historyLineItemLabel" style="color: #27ae60;"></span></h2>
+                    <div id="mappingHistoryTableContainer" style="margin: 1rem 0; max-height: 400px; overflow-y: auto;"></div>
+                    <div style="text-align: right; margin-top: 1rem;">
+                        <button class="btn outline" onclick="document.getElementById('mappingHistoryModal').style.display='none'">Close</button>
                     </div>
                 </div>
             </div>
@@ -351,11 +367,23 @@ export default class ProductCostBuilder {
         }
         
         const pushBtn = document.getElementById('pushQboBtn');
+        const limitText = document.getElementById('limitText');
+        const statusText = document.getElementById('pushStatusText');
+
         if (this.userRole !== 'guest') {
-            pushBtn.disabled = false;
+            if(pushBtn) {
+                pushBtn.disabled = false;
+                pushBtn.title = "Push these entries to QBO";
+            }
+            if(limitText) limitText.innerHTML = `<span style="color:#27ae60;">Admin | Unlimited Push</span>`;
+            if(statusText) statusText.innerText = "Workspace ready. Entries can be pushed to QBO.";
         } else {
-            pushBtn.disabled = true;
-            pushBtn.title = "Available to Subscribers/Admins only";
+            if(pushBtn) {
+                pushBtn.disabled = true;
+                pushBtn.title = "Available to Subscribers/Admins only";
+            }
+            if(limitText) limitText.innerHTML = `<span style="color:#e74c3c;">Guest | Cannot push items or product build entry to QBO</span>`;
+            if(statusText) statusText.innerText = "Only admin users are allowed to save items or push transactions in this tool.";
         }
     }
 
@@ -376,7 +404,6 @@ export default class ProductCostBuilder {
         }
     }
 
-    // THE NEW LIVE DATA FETCHER
     async loadLiveQboData() {
         this.qboAccounts = [];
         this.qboItems = [];
@@ -473,7 +500,7 @@ export default class ProductCostBuilder {
                 <td class="col-num input-cell"><input type="number" class="o-mhrs calc-trigger" value="160"></td>
                 <td class="col-num calc-cell o-rate">0.00</td>
                 <td class="col-num input-cell"><input type="number" class="o-bhrs calc-trigger" value="0"></td>
-                <td class="col-tot calc-cell o-total">0.00</td>
+                <td class="col-tot calc-cell l-total">0.00</td>
                 <td class="col-num input-cell"><input type="number" class="o-comp calc-trigger" value="100" max="100" min="0"></td>
                 <td class="col-tot calc-cell o-wip">0.00</td>
             `;
@@ -568,6 +595,14 @@ export default class ProductCostBuilder {
         subTr.innerHTML = `<td colspan="7" style="text-align: right; padding-right:10px;" class="subtotal-label">Total Stage Cost:</td><td class="col-tot calc-cell o-subtotal-val" style="font-weight:bold;">0.00</td><td colspan="2"></td>`;
         tbody.appendChild(subTr);
         document.getElementById('overhead-table').insertBefore(tbody, document.getElementById('oh-tfoot'));
+    }
+
+    attachTriggers() {
+        window.calcTrigger = () => this.calculateAll();
+        document.querySelectorAll('.calc-trigger').forEach(el => {
+            el.removeEventListener('input', window.calcTrigger);
+            el.addEventListener('input', window.calcTrigger);
+        });
     }
 
     calculateAll() {
@@ -891,6 +926,8 @@ export default class ProductCostBuilder {
             html += `<tr><td colspan="6" style="text-align:center; padding: 2rem; color: #666;">No line items found. Fill out the costing tables.</td></tr>`;
         }
 
+        const isGuest = this.userRole === 'guest';
+
         let i = 0;
         this.uniqueLineItems.forEach(lineItem => {
             const itemMatch = this.qboItems.find(item => item.name.toLowerCase() === lineItem.toLowerCase());
@@ -929,6 +966,8 @@ export default class ProductCostBuilder {
             if (accInQbo) statusHtml += `<div class="qbo-badge" style="margin-top:3px;">✅ Account in QBO</div>`;
             if (!itemInQbo && !accInQbo) statusHtml = `<span style="color:#e74c3c; font-size:0.8rem;">Unmapped</span>`;
 
+            const isDisabled = isFullyMapped || isGuest;
+
             html += `<tr>
                 <td style="white-space:normal; word-wrap: break-word;"><strong>${lineItem}</strong></td>
                 <td>
@@ -943,7 +982,7 @@ export default class ProductCostBuilder {
                 <td>${typeDropdownHtml}</td>
                 <td style="text-align:center;">${statusHtml}</td>
                 <td style="text-align:center; display:flex; gap:5px; justify-content:center;">
-                    <button class="btn" style="background:${isFullyMapped ? '#95a5a6' : '#27ae60'}; color:white; font-weight:bold; padding:0.4rem 0.8rem; border-radius:3px;" onclick="window.pushToQboMapping('${lineItem}', ${i})" ${isFullyMapped ? 'disabled' : ''}>Save to QBO</button>
+                    <button class="btn" style="background:${isDisabled ? '#95a5a6' : '#27ae60'}; color:white; font-weight:bold; padding:0.4rem 0.8rem; border-radius:3px; border:none; cursor:${isDisabled ? 'not-allowed' : 'pointer'};" onclick="window.pushToQboMapping('${lineItem}', ${i})" ${isDisabled ? 'disabled' : ''} title="${isGuest ? 'Available to Admins only' : ''}">Save to QBO</button>
                 </td>
             </tr>`;
             i++;
@@ -962,7 +1001,6 @@ export default class ProductCostBuilder {
                 input.style.display = 'none';
                 typeDropdown.disabled = val !== '';
                 
-                // Auto-sync the type dropdown if an existing account is chosen
                 if (val !== '') {
                     const sel = document.getElementById(`unmap-cat-${index}`);
                     const selectedType = sel.options[sel.selectedIndex].dataset.type;
@@ -998,7 +1036,6 @@ export default class ProductCostBuilder {
             const realmId = qboSelect.value;
 
             try {
-                // 1. Create Account if ADD_NEW
                 if (accDropdownVal === 'ADD_NEW') {
                     const getOrCreateQboAccount = httpsCallable(functions, 'getOrCreateQboAccount');
                     const accRes = await getOrCreateQboAccount({ 
@@ -1009,7 +1046,6 @@ export default class ProductCostBuilder {
                     targetAccountId = accRes.data.id;
                 }
 
-                // 2. Create Item 
                 const itemMatch = this.qboItems.find(item => item.name.toLowerCase() === lineItem.toLowerCase());
                 if (!itemMatch) {
                     const createQboItem = httpsCallable(functions, 'createQboItem');
@@ -1024,13 +1060,13 @@ export default class ProductCostBuilder {
 
                 this.showAlert(`Successfully synced "${lineItem}" with QuickBooks!`, "success");
                 
-                // Refresh live data to update the UI badges!
                 await this.loadLiveQboData();
                 this.renderActiveTab(); 
 
             } catch (err) {
                 this.showAlert(err.message, "danger");
-                btn.innerText = "Save to QBO"; btn.disabled = false;
+                btn.innerText = "Save to QBO"; 
+                btn.disabled = (this.userRole === 'guest');
             }
         };
     }
@@ -1170,12 +1206,15 @@ export default class ProductCostBuilder {
     async handlePushToQbo() {
         const qboSelect = document.getElementById('qboSelect');
         if (!qboSelect || !qboSelect.value) return this.showAlert("Please connect and select a QBO account first.", "warning");
-        if (this.activeMainTab === 'mapping') return this.showAlert("You cannot push the Mapping tab directly. Please select the Journal or Adjustment tab.", "warning");
+        if (this.activeMainTab === 'mapping') return this.showAlert("You cannot push the Mapping tab directly. Please select the Journal or Inventory Adjustment tab.", "warning");
 
         const btn = document.getElementById('pushQboBtn');
         const origText = btn.innerText;
         btn.innerText = "Pushing to QBO...";
         btn.disabled = true;
+        
+        const statusText = document.getElementById('pushStatusText');
+        if (statusText) statusText.innerText = "Initializing push connection...";
 
         try {
             const realmId = qboSelect.value;
@@ -1199,6 +1238,7 @@ export default class ProductCostBuilder {
                 const pushCostingJournalEntry = httpsCallable(functions, 'pushCostingJournalEntry');
                 const res = await pushCostingJournalEntry({ realmId, lines, txnDate, privateNote: `VilBooks Costing: Batch ${this.batchData.batchId}` });
                 this.showAlert(`Journal Entry successfully pushed! (QBO ID: ${res.data.qboResponseId})`, "success");
+                if (statusText) statusText.innerText = "Push completed successfully!";
 
             } else if (this.activeMainTab === 'adjustment_entry') {
                 const adjDate = document.getElementById('adjDate').value;
@@ -1211,7 +1251,7 @@ export default class ProductCostBuilder {
                     
                     if (qty !== 0) {
                         lines.push({
-                            itemName: lineId, // Relies completely on exact item name now!
+                            itemName: lineId,
                             qtyDiff: qty.toString()
                         });
                     }
@@ -1222,12 +1262,14 @@ export default class ProductCostBuilder {
                 const pushInventoryAdjustment = httpsCallable(functions, 'pushInventoryAdjustment');
                 const res = await pushInventoryAdjustment({ realmId, lines, adjDate, adjAccountName });
                 this.showAlert(`Inventory Quantity Adjustment successfully pushed! (QBO ID: ${res.data.qboResponseId})`, "success");
+                if (statusText) statusText.innerText = "Push completed successfully!";
             }
         } catch (err) {
             this.showAlert(err.message, "danger");
+            if (statusText) statusText.innerText = "Push failed. Check alerts.";
         } finally {
             btn.innerText = origText;
-            btn.disabled = false;
+            btn.disabled = (this.userRole === 'guest');
         }
     }
 
