@@ -38,7 +38,7 @@ export default class ProductCostBuilder {
                 .costing-dashboard { width: 100%; background: #fff; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 8px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; box-sizing: border-box; overflow: hidden; }
                 .costing-dashboard h2 { color: var(--header-bg); font-size: 14px; margin-top: 15px; margin-bottom: 5px; text-transform: uppercase; }
                 
-                /* Layout Optimization: Shifted flex ratio from 1.5:1 to 2.3:1 to move exactly ~165px of width to the left */
+                /* Layout Optimization */
                 .main-layout { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; width: 100%; }
                 .left-column { flex: 2.3; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
                 .right-column { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -52,20 +52,19 @@ export default class ProductCostBuilder {
                 
                 /* Table 1, 5, 6 Layout */
                 table.simple-table { table-layout: auto !important; }
-                /* Label cells wrap text gracefully when crowded, maintaining a safe minimum width */
                 table.simple-table td.label-cell { width: 1%; min-width: 220px; white-space: normal; padding-right: 15px !important; background-color: var(--accent-bg); font-weight: bold; line-height: 1.2; }
                 table.simple-table td:nth-child(2) { padding: 0 !important; width: auto; }
                 table.simple-table input { width: 100%; border: none; padding: 4px 8px; text-align: right !important; box-sizing: border-box; background-color: var(--input-bg); }
                 table.simple-table td.calc-cell { background-color: var(--calc-bg); text-align: right; padding: 4px 8px !important; }
 
                 /* Table 2, 3, 4 Layout (Data Tables) */
-                table.data-table { table-layout: fixed !important; min-width: 1000px !important; }
+                table.data-table { table-layout: fixed !important; min-width: 800px !important; }
                 table.data-table th { white-space: normal; word-wrap: break-word; line-height: 1.2; padding: 4px !important; }
                 
-                /* Column Widths (Fixed sizes for numbers, remaining space divides between dropdowns) */
+                /* Column Widths (Reduced to prevent half-hidden columns) */
                 .col-action { width: 30px; text-align: center; }
-                .col-num { width: 70px; text-align: center; } /* 9,999.99 */
-                .col-tot { width: 95px; text-align: right; } /* 99,999,999.99 */
+                .col-num { width: 55px; text-align: center; } /* 999.99 */
+                .col-tot { width: 85px; text-align: right; } /* 9,999,999.99 */
                 
                 table.data-table td.input-cell { padding-left: 2px !important; padding-right: 2px !important; }
                 table.data-table input, table.data-table select { width: 100%; box-sizing: border-box; background-color: var(--input-bg); border: 1px solid #ccc; padding: 3px; }
