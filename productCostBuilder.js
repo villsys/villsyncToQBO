@@ -61,7 +61,7 @@ export default class ProductCostBuilder {
                 table.data-table { table-layout: fixed !important; min-width: 800px !important; }
                 table.data-table th { white-space: normal; word-wrap: break-word; line-height: 1.2; padding: 4px !important; }
                 
-                /* Column Widths (Reduced to prevent half-hidden columns) */
+                /* Column Widths */
                 .col-action { width: 30px; text-align: center; }
                 .col-num { width: 55px; text-align: center; } /* 999.99 */
                 .col-tot { width: 85px; text-align: right; } /* 9,999,999.99 */
@@ -117,7 +117,13 @@ export default class ProductCostBuilder {
                             <input type="text" id="initClientName" placeholder="E.g. Acme Corp">
                             <label><strong>Product Variant Name</strong></label>
                             <input type="text" id="initProductName" placeholder="E.g. Strawberry 10mg">
-                            <button class="btn" id="unlockBtn" style="width: 100%;">Generate Batch Workspace</button>
+                            <button class="btn" id="unlockBtn" style="width: 100%; margin-bottom: 1rem;">Generate Batch Workspace</button>
+                            
+                            <div style="text-align: center; color: #888; margin-bottom: 1rem; font-size: 0.85rem; font-weight: bold;">— OR —</div>
+                            
+                            <label class="btn outline" style="display: block; text-align: center; margin: 0; background: white; color: #2c3e50; border: 1px dashed #2c3e50; cursor: pointer; padding: 0.6rem;">
+                                📂 Load Existing JSON Batch <input type="file" id="modalLoadJsonInput" accept=".json" style="display:none;">
+                            </label>
                         </div>
                     </div>
 
@@ -310,8 +316,11 @@ export default class ProductCostBuilder {
             this.calculateAll();
         });
 
-        document.getElementById('saveJsonBtn').addEventListener('click', () => this.saveToJson());
+        // The new direct load from JSON listeners
+        document.getElementById('modalLoadJsonInput').addEventListener('change', (e) => this.loadFromJson(e));
         document.getElementById('loadJsonInput').addEventListener('change', (e) => this.loadFromJson(e));
+        
+        document.getElementById('saveJsonBtn').addEventListener('click', () => this.saveToJson());
         document.getElementById('exportExcelBtn').addEventListener('click', () => this.exportToExcel());
         document.getElementById('pushQboBtn').addEventListener('click', () => this.handlePushToQbo());
 
