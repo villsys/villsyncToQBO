@@ -60,7 +60,7 @@ export default class Shopify {
             
             <div class="container" style="padding-top: 0.25rem;">
                 <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.4rem;">VilSync: Shopify Integrator</h2>
-                <p style="color: #666; font-size: 0.85rem; margin-top: 0;">Upload your <strong>orders_export.csv</strong> (for Sales Receipts) or <strong>payment_transactions_export.csv</strong> (for Payouts & Fees).</p>
+                <p style="color: #666; font-size: 0.85rem; margin-top: 0;">Upload your <strong>orders_export.csv</strong> (for Sales Receipts) or <strong>payment_transactions_export.csv</strong> (for Payouts & Fees) exactly as downloaded, without any edits.</p>
                 <div id="alertBox" class="alert" style="margin-bottom: 0.25rem; padding: 0.4rem;"></div>
 
                 <div id="pushStatusBar" class="desktop-scroll-row" style="background: #f8f9fa; border: 1px solid #dee2e6; border-left: 4px solid #27ae60; padding: 0.4rem 1rem; margin-bottom: 0.25rem; border-radius: 4px; justify-content: space-between; align-items: center; font-size: 0.9rem; position: relative; overflow-y: hidden;">
