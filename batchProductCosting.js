@@ -3,7 +3,7 @@ import { collection, doc, getDoc, setDoc, getDocs, writeBatch } from "https://ww
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-functions.js";
 import { currentUser } from './app.js';
 
-export default class Costing {
+export default class BatchProductCosting {
     constructor() {
         this.categoriesDict = {};
         this.activeMainTab = "general_journal";
