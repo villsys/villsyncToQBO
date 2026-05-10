@@ -54,7 +54,7 @@ export default class ProductCostBuilder {
                 table.simple-table { table-layout: auto !important; }
                 table.simple-table td.label-cell { width: 1%; white-space: nowrap; padding-right: 15px !important; background-color: var(--accent-bg); font-weight: bold; }
                 table.simple-table td:nth-child(2) { padding: 0 !important; width: auto; }
-                table.simple-table input { width: 100%; border: none; padding: 4px 8px; text-align: left !important; box-sizing: border-box; background-color: var(--input-bg); }
+                table.simple-table input { width: 100%; border: none; padding: 4px 8px; text-align: right !important; box-sizing: border-box; background-color: var(--input-bg); }
                 table.simple-table td.calc-cell { background-color: var(--calc-bg); text-align: right; padding: 4px 8px !important; }
 
                 /* Table 2, 3, 4 Layout (Data Tables) */
@@ -623,12 +623,12 @@ export default class ProductCostBuilder {
                 <input type="date" id="journalDate" style="padding:4px; margin-left:10px;">
             </div>
             <div class="table-responsive">
-            <table class="costing-table" style="width:100% !important;">
+            <table class="costing-table data-table" style="width:100% !important;">
                 <thead><tr>
-                    <th style="text-align:left;">Account</th>
-                    <th style="text-align:right; width: 100px;">Debit</th>
-                    <th style="text-align:right; width: 100px;">Credit</th>
-                    <th style="text-align:left;">Memo</th>
+                    <th style="text-align:left; width: auto;">Account</th>
+                    <th class="col-tot">Debit</th>
+                    <th class="col-tot">Credit</th>
+                    <th style="text-align:left; width: auto;">Memo</th>
                 </tr></thead>
                 <tbody>
         `;
@@ -643,7 +643,7 @@ export default class ProductCostBuilder {
             if (w > 0 && item && item !== "ADD_NEW") {
                 totalWipCost += w;
                 const cat = (this.categoriesDict[`raw[${item}]`] || {}).category || '<span style="color:red">Unmapped</span>';
-                creditLines.push(`<tr><td>${cat}</td><td></td><td class="calc-cell">${w.toFixed(2)}</td><td>Raw Mat: ${item}</td></tr>`);
+                creditLines.push(`<tr><td>${cat}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Raw Mat: ${item}</td></tr>`);
             }
         });
         document.querySelectorAll('.labor-row').forEach(r => {
@@ -653,7 +653,7 @@ export default class ProductCostBuilder {
             if (w > 0 && stage && func && stage !== "ADD_NEW" && func !== "ADD_NEW") {
                 totalWipCost += w;
                 const cat = (this.categoriesDict[`lbr[${stage}]-[${func}]`] || {}).category || '<span style="color:red">Unmapped</span>';
-                creditLines.push(`<tr><td>${cat}</td><td></td><td class="calc-cell">${w.toFixed(2)}</td><td>Labor: ${stage} - ${func}</td></tr>`);
+                creditLines.push(`<tr><td>${cat}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Labor: ${stage} - ${func}</td></tr>`);
             }
         });
         document.querySelectorAll('.oh-row').forEach(r => {
@@ -663,12 +663,12 @@ export default class ProductCostBuilder {
             if (w > 0 && stage && lbl && stage !== "ADD_NEW" && lbl !== "ADD_NEW") {
                 totalWipCost += w;
                 const cat = (this.categoriesDict[`foh[${stage}]-[${lbl}]`] || {}).category || '<span style="color:red">Unmapped</span>';
-                creditLines.push(`<tr><td>${cat}</td><td></td><td class="calc-cell">${w.toFixed(2)}</td><td>Overhead: ${stage} - ${lbl}</td></tr>`);
+                creditLines.push(`<tr><td>${cat}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Overhead: ${stage} - ${lbl}</td></tr>`);
             }
         });
 
         const debitCat = (this.categoriesDict[`fgd[${this.batchData.productName}]`] || {}).category || debitAccount;
-        html += `<tr><td><strong>${debitCat}</strong></td><td class="calc-cell" style="font-weight:bold;">${totalWipCost.toFixed(2)}</td><td></td><td>Batch ${this.batchData.batchId} Build</td></tr>`;
+        html += `<tr><td><strong>${debitCat}</strong></td><td class="col-tot calc-cell" style="font-weight:bold;">${totalWipCost.toFixed(2)}</td><td></td><td>Batch ${this.batchData.batchId} Build</td></tr>`;
         html += creditLines.join('');
         html += `</tbody></table></div>`;
         document.getElementById('costingTabContent').innerHTML = html;
@@ -681,18 +681,18 @@ export default class ProductCostBuilder {
                 <input type="date" id="adjDate" style="padding:4px; margin-left:10px;">
             </div>
             <div class="table-responsive">
-            <table class="costing-table" style="width:100% !important;">
+            <table class="costing-table data-table" style="width:100% !important;">
                 <thead><tr>
-                    <th style="text-align:left;">Line Item Generated ID</th>
-                    <th style="text-align:left;">Mapped QBO Category</th>
-                    <th style="text-align:right; width: 150px;">Cost Value</th>
+                    <th style="text-align:left; width: auto;">Line Item Generated ID</th>
+                    <th style="text-align:left; width: auto;">Mapped QBO Category</th>
+                    <th class="col-tot">Cost Value</th>
                 </tr></thead>
                 <tbody>
         `;
 
         this.uniqueLineItems.forEach(lineItem => {
             const cat = (this.categoriesDict[lineItem] || {}).category || '<span style="color:red">Unmapped</span>';
-            html += `<tr><td><strong>${lineItem}</strong></td><td>${cat}</td><td class="calc-cell" style="color:#888;">[Calculated from table]</td></tr>`;
+            html += `<tr><td><strong>${lineItem}</strong></td><td>${cat}</td><td class="col-tot calc-cell" style="color:#888;">[Calculated]</td></tr>`;
         });
 
         html += `</tbody></table></div>`;
@@ -705,13 +705,13 @@ export default class ProductCostBuilder {
                 <span style="font-size:0.9rem; color:#666;">Showing all ${this.uniqueLineItems.size} unique line items required for this batch. Overrides are saved specifically to the active QBO Company.</span>
             </div>
             <div class="table-responsive">
-            <table class="costing-table" style="width:100% !important;"><thead><tr>
-                <th style="text-align:left;">Line Item</th>
-                <th style="text-align:left;">Company QBO Account Name</th>
-                <th style="text-align:left;">Account Type</th>
-                <th style="text-align:center;">Source</th>
-                <th style="text-align:left;">Description</th>
-                <th style="text-align:center;">Action</th>
+            <table class="costing-table data-table" style="width:100% !important; min-width: 900px !important;"><thead><tr>
+                <th style="text-align:left; width:20%;">Line Item</th>
+                <th style="text-align:left; width:20%;">Company QBO Account Name</th>
+                <th style="text-align:left; width:15%;">Account Type</th>
+                <th style="text-align:center; width:10%;">Source</th>
+                <th style="text-align:left; width:20%;">Description</th>
+                <th style="text-align:center; width:15%;">Action</th>
             </tr></thead><tbody>
         `;
 
@@ -731,7 +731,7 @@ export default class ProductCostBuilder {
                               `<span style="background:#fdedec; padding:2px 6px; border-radius:4px; font-size:0.75rem; color:#e74c3c; font-weight:bold;">Unmapped</span>`;
 
             html += `<tr>
-                <td style="white-space:nowrap;"><strong>${lineItem}</strong></td>
+                <td style="white-space:normal; word-wrap: break-word;"><strong>${lineItem}</strong></td>
                 <td><input type="text" id="unmap-cat-${i}" value="${suggestedCategory}" placeholder="QBO Account Name" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
                 <td>
                     <select id="unmap-type-${i}" style="padding:0.4rem; width:100%; box-sizing: border-box;">
