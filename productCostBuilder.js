@@ -34,27 +34,44 @@ export default class ProductCostBuilder {
                     --accent-bg: #D9E1F2; --border-color: #D9D9D9;
                     --btn-bg: #28a745; --btn-del: #dc3545;
                 }
+                
                 .costing-dashboard { width: 100%; background: #fff; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 8px; }
                 .costing-dashboard h2 { color: var(--header-bg); font-size: 14px; margin-top: 15px; margin-bottom: 5px; text-transform: uppercase; }
+                
                 .main-layout { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
                 .left-column { flex: 1.5; min-width: 55%; display: flex; flex-direction: column; gap: 10px; }
                 .right-column { flex: 1; min-width: 40%; display: flex; flex-direction: column; gap: 10px; }
                 
-                .table-responsive { width: 100%; overflow-x: auto; margin-bottom: 10px; }
+                /* Layout Optimization: Overrides global style.css */
+                .costing-dashboard .table-responsive { width: 100%; overflow-x: auto; margin-bottom: 10px; }
                 
-                /* Layout Optimization: Removed width: 100% so tables shrink-wrap to their content */
-                table.costing-table { border-collapse: collapse; font-size: 0.85rem; table-layout: auto; }
+                table.costing-table { 
+                    border-collapse: collapse !important; 
+                    font-size: 0.85rem !important; 
+                    table-layout: auto !important; 
+                    width: auto !important; /* Overrides global 100% */
+                    min-width: 0 !important; /* Overrides global 1000px */
+                }
+                
                 table.costing-table th, table.costing-table td { border: 1px solid var(--border-color); padding: 4px 8px; text-align: left; }
                 table.costing-table th { background-color: var(--header-bg); color: var(--header-text); text-align: center; font-weight: normal; white-space: nowrap; }
                 
                 /* Column Width Optimizations */
-                .label-cell { background-color: var(--accent-bg); font-weight: bold; white-space: nowrap; padding-right: 20px !important; }
-                .calc-cell { background-color: var(--calc-bg); text-align: right; }
+                table.costing-table td.label-cell { background-color: var(--accent-bg); font-weight: bold; white-space: nowrap; padding-right: 20px !important; width: 1%; }
+                table.costing-table td.calc-cell { background-color: var(--calc-bg); text-align: right; white-space: nowrap; width: 1%; }
+                table.costing-table td.dropdown-cell { width: 1%; white-space: nowrap; } /* Shrinks to exactly fit the select box */
                 
-                /* Inputs & Selects naturally constrain themselves now */
                 .costing-table input { box-sizing: border-box; background-color: var(--input-bg); border: 1px solid #ccc; padding: 3px; }
-                .costing-table input[type="number"] { text-align: right; width: 80px; }
-                .costing-table select { background-color: var(--input-bg); border: 1px solid #ccc; padding: 3px; min-width: 140px; width: max-content; max-width: 300px; }
+                .costing-table input[type="number"] { text-align: right; width: 70px; }
+                
+                /* Select boxes shrink to their content */
+                .costing-table select { 
+                    background-color: var(--input-bg); 
+                    border: 1px solid #ccc; 
+                    padding: 3px; 
+                    width: max-content; 
+                    max-width: 300px;
+                }
                 
                 .total-row td { font-weight: bold; background-color: var(--accent-bg); border-top: 2px solid var(--header-bg); }
                 
@@ -207,7 +224,7 @@ export default class ProductCostBuilder {
                                         <tr><td class="label-cell">COST PER FINISHED GUMMY</td><td class="calc-cell" id="s_cpg" style="font-weight: bold;">$0.00</td></tr>
                                         <tr><td colspan="2" style="border: none; padding: 5px;"></td></tr>
                                         <tr><td class="label-cell">Total Cost of Gummies per Pack</td><td class="calc-cell" id="s_cost_per_pack_gummies">$0.00</td></tr>
-                                        <tr><td class="label-cell">Add: Packaging Cost per Pack</td><td><input type="number" id="p_pack_cost" class="calc-trigger" value="0.18"></td></tr>
+                                        <tr><td class="label-cell">Add: Packaging Cost per Pack</td><td><input type="number" id="p_pack_cost" class="calc-trigger" value="0.18" style="width:100%;"></td></tr>
                                         <tr class="total-row"><td class="label-cell">TOTAL COST PER PACK / BAG</td><td class="calc-cell" id="s_total_pack_cost" style="font-weight: bold;">$0.00</td></tr>
                                     </table>
                                 </div>
@@ -217,7 +234,7 @@ export default class ProductCostBuilder {
                                 <h2>6. Pricing & Margin Analysis</h2>
                                 <div class="table-responsive">
                                     <table class="costing-table" id="pricing-table">
-                                        <tr><td class="label-cell">Target Profit Margin (%)</td><td><input type="number" id="p_margin" class="calc-trigger" value="65"></td></tr>
+                                        <tr><td class="label-cell">Target Profit Margin (%)</td><td><input type="number" id="p_margin" class="calc-trigger" value="65" style="width:100%;"></td></tr>
                                         <tr class="total-row"><td class="label-cell">Recommended Wholesale Price (Per Pack)</td><td class="calc-cell" id="p_wholesale">$0.00</td></tr>
                                     </table>
                                 </div>
@@ -266,13 +283,11 @@ export default class ProductCostBuilder {
             this.calculateAll();
         });
 
-        // Toolbar Events
         document.getElementById('saveJsonBtn').addEventListener('click', () => this.saveToJson());
         document.getElementById('loadJsonInput').addEventListener('change', (e) => this.loadFromJson(e));
         document.getElementById('exportExcelBtn').addEventListener('click', () => this.exportToExcel());
         document.getElementById('pushQboBtn').addEventListener('click', () => this.handlePushToQbo());
 
-        // Load Global Dictionaries and Overrides for mapping
         const qboSelect = document.getElementById('qboSelect');
         if (qboSelect) {
             qboSelect.addEventListener('change', async () => {
@@ -281,8 +296,6 @@ export default class ProductCostBuilder {
             });
         }
         await this.loadCategories();
-        
-        // Load Dropdown Options
         await this.loadDropdownCollections();
 
         document.getElementById('addBomBtn').addEventListener('click', () => this.addBomRow());
@@ -300,7 +313,6 @@ export default class ProductCostBuilder {
             });
         });
 
-        // Initialize with default rows
         this.addBomRow();
         this.addLaborRow();
         this.addOhRow();
@@ -400,7 +412,7 @@ export default class ProductCostBuilder {
         tr.className = 'bom-row line-row';
         tr.innerHTML = `
             <td><button class="btn-del" onclick="this.closest('tr').remove(); window.calcTrigger()">-</button></td>
-            <td>${this.generateSelectHtml(this.rawMaterials, 'b-item', 'window.calcTrigger()', item)}</td>
+            <td class="dropdown-cell">${this.generateSelectHtml(this.rawMaterials, 'b-item', 'window.calcTrigger()', item)}</td>
             <td><input type="number" class="b-qty calc-trigger" value="${qty}"></td>
             <td><input type="number" class="b-cost calc-trigger" value="${cost}"></td>
             <td class="calc-cell b-total">0.00</td>
@@ -416,8 +428,8 @@ export default class ProductCostBuilder {
         tr.className = 'labor-row line-row';
         tr.innerHTML = `
             <td><button class="btn-del" onclick="this.closest('tr').remove(); window.calcTrigger()">-</button></td>
-            <td>${this.generateSelectHtml(this.productionStages, 'l-stage', 'window.calcTrigger()', stage)}</td>
-            <td>${this.generateSelectHtml(this.laborItems, 'l-func', 'window.calcTrigger()', func)}</td>
+            <td class="dropdown-cell">${this.generateSelectHtml(this.productionStages, 'l-stage', 'window.calcTrigger()', stage)}</td>
+            <td class="dropdown-cell">${this.generateSelectHtml(this.laborItems, 'l-func', 'window.calcTrigger()', func)}</td>
             <td><input type="number" class="l-rate calc-trigger" value="${rate}"></td>
             <td><input type="number" class="l-bhrs calc-trigger" value="${bhrs}"></td>
             <td class="calc-cell l-total">0.00</td>
@@ -433,8 +445,8 @@ export default class ProductCostBuilder {
         tr.className = 'oh-row line-row';
         tr.innerHTML = `
             <td><button class="btn-del" onclick="this.closest('tr').remove(); window.calcTrigger()">-</button></td>
-            <td>${this.generateSelectHtml(this.productionStages, 'o-stage', 'window.calcTrigger()', stage)}</td>
-            <td>${this.generateSelectHtml(this.overheadItems, 'o-label', 'window.calcTrigger()', label)}</td>
+            <td class="dropdown-cell">${this.generateSelectHtml(this.productionStages, 'o-stage', 'window.calcTrigger()', stage)}</td>
+            <td class="dropdown-cell">${this.generateSelectHtml(this.overheadItems, 'o-label', 'window.calcTrigger()', label)}</td>
             <td><input type="number" class="o-rate calc-trigger" value="${rate}"></td>
             <td><input type="number" class="o-bhrs calc-trigger" value="${bhrs}"></td>
             <td class="calc-cell o-total">0.00</td>
@@ -455,7 +467,6 @@ export default class ProductCostBuilder {
     }
 
     calculateAll() {
-        // Yield Logic
         const vol = parseFloat(document.getElementById('p_vol').value) || 0;
         const evapRate = (parseFloat(document.getElementById('p_evap').value) || 0) / 100;
         const scrapRate = (parseFloat(document.getElementById('p_scrap').value) || 0) / 100;
@@ -474,7 +485,6 @@ export default class ProductCostBuilder {
         document.getElementById('y_net').innerText = netVol.toFixed(2);
         document.getElementById('y_gummies').innerText = Math.round(grossGummies).toLocaleString();
 
-        // Check Completion Status
         let allComplete = true;
         document.querySelectorAll('.b-comp, .l-comp, .o-comp').forEach(input => {
             if ((parseFloat(input.value) || 0) < 100) allComplete = false;
@@ -484,11 +494,9 @@ export default class ProductCostBuilder {
         const dynamicHeader = allComplete ? "FG Cost" : "WIP Cost";
         document.querySelectorAll('.dynamic-cost-header').forEach(th => th.innerText = dynamicHeader);
 
-        // Collect Unique Line Items for Mapping
         this.uniqueLineItems.clear();
         this.uniqueLineItems.add(`fgd[${this.batchData.productName}]`);
 
-        // BOM Math
         let bomTot = 0, bomWipTot = 0;
         document.querySelectorAll('.bom-row').forEach(row => {
             let q = parseFloat(row.querySelector('.b-qty').value) || 0;
@@ -506,7 +514,6 @@ export default class ProductCostBuilder {
         document.getElementById('bom_cost_total').innerText = bomTot.toFixed(2);
         document.getElementById('bom_wip_total').innerText = bomWipTot.toFixed(2);
 
-        // Labor Math
         let labTot = 0, labWipTot = 0;
         document.querySelectorAll('.labor-row').forEach(row => {
             let r = parseFloat(row.querySelector('.l-rate').value) || 0;
@@ -525,7 +532,6 @@ export default class ProductCostBuilder {
         document.getElementById('labor_cost_total').innerText = labTot.toFixed(2);
         document.getElementById('labor_wip_total').innerText = labWipTot.toFixed(2);
 
-        // OH Math
         let ohTot = 0, ohWipTot = 0;
         document.querySelectorAll('.oh-row').forEach(row => {
             let r = parseFloat(row.querySelector('.o-rate').value) || 0;
@@ -544,7 +550,6 @@ export default class ProductCostBuilder {
         document.getElementById('oh_cost_total').innerText = ohTot.toFixed(2);
         document.getElementById('oh_wip_total').innerText = ohWipTot.toFixed(2);
 
-        // Summary Math
         let batchCost = bomTot + labTot + ohTot; 
         document.getElementById('s_batch_cost').innerText = batchCost.toFixed(2);
         let costPerGummy = grossGummies > 0 ? (batchCost / grossGummies) : 0;
@@ -556,7 +561,6 @@ export default class ProductCostBuilder {
         let totalCostPerPack = costOfGummiesPerPack + packCost;
         document.getElementById('s_total_pack_cost').innerText = totalCostPerPack.toFixed(2);
 
-        // Pricing Math
         let margin = (parseFloat(document.getElementById('p_margin').value) || 0) / 100;
         let wholesale = margin < 1 ? (totalCostPerPack / (1 - margin)) : 0;
         document.getElementById('p_wholesale').innerText = wholesale.toFixed(2);
@@ -599,7 +603,7 @@ export default class ProductCostBuilder {
                 <input type="date" id="journalDate" style="padding:4px; margin-left:10px;">
             </div>
             <div class="table-responsive">
-            <table class="costing-table" style="width:100%;">
+            <table class="costing-table" style="width:100% !important;">
                 <thead><tr>
                     <th style="text-align:left;">Account</th>
                     <th style="text-align:right;">Debit</th>
@@ -610,42 +614,41 @@ export default class ProductCostBuilder {
         `;
 
         const debitAccount = this.batchData.isComplete ? "Finished Goods Inventory" : "Work In Progress Inventory";
-        
         let totalWipCost = 0;
         const creditLines = [];
 
         document.querySelectorAll('.bom-row').forEach(r => {
             const w = parseFloat(r.querySelector('.b-wip').innerText) || 0;
             const item = r.querySelector('.b-item').value;
-            if (w > 0 && item) {
+            if (w > 0 && item && item !== "ADD_NEW") {
                 totalWipCost += w;
                 const cat = (this.categoriesDict[`raw[${item}]`] || {}).category || '<span style="color:red">Unmapped</span>';
-                creditLines.push(`<tr><td>${cat}</td><td></td><td style="text-align:right;">${w.toFixed(2)}</td><td>Raw Mat: ${item}</td></tr>`);
+                creditLines.push(`<tr><td>${cat}</td><td></td><td class="calc-cell">${w.toFixed(2)}</td><td>Raw Mat: ${item}</td></tr>`);
             }
         });
         document.querySelectorAll('.labor-row').forEach(r => {
             const w = parseFloat(r.querySelector('.l-wip').innerText) || 0;
             const stage = r.querySelector('.l-stage').value;
             const func = r.querySelector('.l-func').value;
-            if (w > 0 && stage && func) {
+            if (w > 0 && stage && func && stage !== "ADD_NEW" && func !== "ADD_NEW") {
                 totalWipCost += w;
                 const cat = (this.categoriesDict[`lbr[${stage}]-[${func}]`] || {}).category || '<span style="color:red">Unmapped</span>';
-                creditLines.push(`<tr><td>${cat}</td><td></td><td style="text-align:right;">${w.toFixed(2)}</td><td>Labor: ${stage} - ${func}</td></tr>`);
+                creditLines.push(`<tr><td>${cat}</td><td></td><td class="calc-cell">${w.toFixed(2)}</td><td>Labor: ${stage} - ${func}</td></tr>`);
             }
         });
         document.querySelectorAll('.oh-row').forEach(r => {
             const w = parseFloat(r.querySelector('.o-wip').innerText) || 0;
             const stage = r.querySelector('.o-stage').value;
             const lbl = r.querySelector('.o-label').value;
-            if (w > 0 && stage && lbl) {
+            if (w > 0 && stage && lbl && stage !== "ADD_NEW" && lbl !== "ADD_NEW") {
                 totalWipCost += w;
                 const cat = (this.categoriesDict[`foh[${stage}]-[${lbl}]`] || {}).category || '<span style="color:red">Unmapped</span>';
-                creditLines.push(`<tr><td>${cat}</td><td></td><td style="text-align:right;">${w.toFixed(2)}</td><td>Overhead: ${stage} - ${lbl}</td></tr>`);
+                creditLines.push(`<tr><td>${cat}</td><td></td><td class="calc-cell">${w.toFixed(2)}</td><td>Overhead: ${stage} - ${lbl}</td></tr>`);
             }
         });
 
         const debitCat = (this.categoriesDict[`fgd[${this.batchData.productName}]`] || {}).category || debitAccount;
-        html += `<tr><td><strong>${debitCat}</strong></td><td style="text-align:right; font-weight:bold;">${totalWipCost.toFixed(2)}</td><td></td><td>Batch ${this.batchData.batchId} Build</td></tr>`;
+        html += `<tr><td><strong>${debitCat}</strong></td><td class="calc-cell" style="font-weight:bold;">${totalWipCost.toFixed(2)}</td><td></td><td>Batch ${this.batchData.batchId} Build</td></tr>`;
         html += creditLines.join('');
         html += `</tbody></table></div>`;
         document.getElementById('costingTabContent').innerHTML = html;
@@ -658,7 +661,7 @@ export default class ProductCostBuilder {
                 <input type="date" id="adjDate" style="padding:4px; margin-left:10px;">
             </div>
             <div class="table-responsive">
-            <table class="costing-table" style="width:100%;">
+            <table class="costing-table" style="width:100% !important;">
                 <thead><tr>
                     <th style="text-align:left;">Line Item Generated ID</th>
                     <th style="text-align:left;">Mapped QBO Category</th>
@@ -669,7 +672,7 @@ export default class ProductCostBuilder {
 
         this.uniqueLineItems.forEach(lineItem => {
             const cat = (this.categoriesDict[lineItem] || {}).category || '<span style="color:red">Unmapped</span>';
-            html += `<tr><td><strong>${lineItem}</strong></td><td>${cat}</td><td style="text-align:right; color:#888;">[Calculated from table]</td></tr>`;
+            html += `<tr><td><strong>${lineItem}</strong></td><td>${cat}</td><td class="calc-cell" style="color:#888;">[Calculated from table]</td></tr>`;
         });
 
         html += `</tbody></table></div>`;
@@ -682,7 +685,7 @@ export default class ProductCostBuilder {
                 <span style="font-size:0.9rem; color:#666;">Showing all ${this.uniqueLineItems.size} unique line items required for this batch. Overrides are saved specifically to the active QBO Company.</span>
             </div>
             <div class="table-responsive">
-            <table class="costing-table" style="width:100%;"><thead><tr>
+            <table class="costing-table" style="width:100% !important;"><thead><tr>
                 <th style="text-align:left;">Line Item</th>
                 <th style="text-align:left;">Company QBO Account Name</th>
                 <th style="text-align:left;">Account Type</th>
@@ -708,7 +711,7 @@ export default class ProductCostBuilder {
                               `<span style="background:#fdedec; padding:2px 6px; border-radius:4px; font-size:0.75rem; color:#e74c3c; font-weight:bold;">Unmapped</span>`;
 
             html += `<tr>
-                <td><strong>${lineItem}</strong></td>
+                <td style="white-space:nowrap;"><strong>${lineItem}</strong></td>
                 <td><input type="text" id="unmap-cat-${i}" value="${suggestedCategory}" placeholder="QBO Account Name" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
                 <td>
                     <select id="unmap-type-${i}" style="padding:0.4rem; width:100%; box-sizing: border-box;">
@@ -872,7 +875,6 @@ export default class ProductCostBuilder {
                 document.getElementById('p_gpl').value = data.params.gpl;
                 document.getElementById('p_gpp').value = data.params.gpp;
                 
-                // Add checks for pricing logic incase an old JSON doesn't have it
                 if (document.getElementById('p_pack_cost') && data.params.packCost) document.getElementById('p_pack_cost').value = data.params.packCost;
                 if (document.getElementById('p_margin') && data.params.margin) document.getElementById('p_margin').value = data.params.margin;
 
@@ -951,9 +953,7 @@ export default class ProductCostBuilder {
         btn.disabled = true;
 
         try {
-            // Placeholder: Replace with your final API calls
             await new Promise(r => setTimeout(r, 1500)); 
-            
             this.showAlert(`The ${this.activeMainTab.replace('_', ' ')} data has been successfully prepared for QBO synchronization.`, "success");
         } catch (err) {
             this.showAlert(err.message, "danger");
