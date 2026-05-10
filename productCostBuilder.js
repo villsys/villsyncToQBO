@@ -61,7 +61,7 @@ export default class ProductCostBuilder {
                 table.data-table { table-layout: fixed !important; min-width: 800px !important; }
                 table.data-table th { white-space: normal; word-wrap: break-word; line-height: 1.2; padding: 4px !important; }
                 
-                /* Column Widths */
+                /* Column Widths (Reduced to prevent half-hidden columns) */
                 .col-action { width: 30px; text-align: center; }
                 .col-num { width: 55px; text-align: center; } /* 999.99 */
                 .col-tot { width: 85px; text-align: right; } /* 9,999,999.99 */
@@ -579,7 +579,6 @@ export default class ProductCostBuilder {
     }
 
     attachTriggers() {
-        // We do not re-attach attachAddNewLogic here to prevent errors. It's handled once in attachGlobalHelpers.
         window.calcTrigger = () => this.calculateAll();
         document.querySelectorAll('.calc-trigger').forEach(el => {
             el.removeEventListener('input', window.calcTrigger);
