@@ -837,6 +837,76 @@ export default class ProductCostBuilder {
                 <thead><tr>
                     <th style="text-align:left; width: auto;">Line Item Generated ID</th>
                     <th style="text-align:left; width: auto;">Mapped QBO Category</th>
+                    <th class="col-num">Qty / Hrs</th>
+                    <th class="col-tot">Cost Value</th>
+                </tr></thead>
+                <tbody>
+        `;
+
+        const creditLines = [];
+        let totalWipCost = 0;
+
+        // Collect BOM
+        document.querySelectorAll('.bom-row').forEach(r => {
+            const w = parseFloat(r.querySelector('.b-wip').innerText) || 0;
+            const q = parseFloat(r.querySelector('.b-qty').value) || 0;
+            const item = r.querySelector('.b-item').value;
+            if (w > 0 && item && item !== "ADD_NEW") {
+                totalWipCost += w;
+                const lineId = `RAW - ${item}`;
+                const cat = (this.categoriesDict[lineId] || {}).category || '<span style="color:red">Unmapped</span>';
+                creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="col-num calc-cell">${q.toFixed(2)}</td><td class="col-tot calc-cell">${w.toFixed(2)}</td></tr>`);
+            }
+        });
+
+        // Collect Labor
+        document.querySelectorAll('.labor-group').forEach(g => {
+            const stage = g.querySelector('.l-stage').value;
+            g.querySelectorAll('.labor-main-row, .labor-sub-row').forEach(r => {
+                const w = parseFloat(r.querySelector('.l-wip').innerText) || 0;
+                const h = parseFloat(r.querySelector('.l-bhrs').value) || 0;
+                const func = r.querySelector('.l-func').value;
+                if (w > 0 && stage && func && stage !== "ADD_NEW" && func !== "ADD_NEW") {
+                    totalWipCost += w;
+                    const lineId = `LBR - ${stage} - ${func}`;
+                    const cat = (this.categoriesDict[lineId] || {}).category || '<span style="color:red">Unmapped</span>';
+                    creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="col-num calc-cell">${h.toFixed(2)}</td><td class="col-tot calc-cell">${w.toFixed(2)}</td></tr>`);
+                }
+            });
+        });
+
+        // Collect Overhead
+        document.querySelectorAll('.oh-group').forEach(g => {
+            const stage = g.querySelector('.o-stage').value;
+            g.querySelectorAll('.oh-main-row, .oh-sub-row').forEach(r => {
+                const w = parseFloat(r.querySelector('.o-wip').innerText) || 0;
+                const h = parseFloat(r.querySelector('.o-bhrs').value) || 0;
+                const lbl = r.querySelector('.o-label').value;
+                if (w > 0 && stage && lbl && stage !== "ADD_NEW" && lbl !== "ADD_NEW") {
+                    totalWipCost += w;
+                    const lineId = `FOH - ${stage} - ${lbl}`;
+                    const cat = (this.categoriesDict[lineId] || {}).category || '<span style="color:red">Unmapped</span>';
+                    creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="col-num calc-cell">${h.toFixed(2)}</td><td class="col-tot calc-cell">${w.toFixed(2)}</td></tr>`);
+                }
+            });
+        });
+
+        // FG Line (Debit equivalent)
+        const fgId = `FGD - ${this.batchData.productName}`;
+        const debitCat = (this.categoriesDict[fgId] || {}).category || (this.batchData.isComplete ? "Finished Goods Inventory" : "Work In Progress Inventory");
+        
+        // Grab the actual calculated quantity from the Yield table
+        let fgQty = parseFloat(document.getElementById('y_gummies').innerText.replace(/,/g, '')) || 0; 
+
+        html += `<tr><td><strong>${fgId}</strong></td><td><strong>${debitCat}</strong></td><td class="col-num calc-cell" style="font-weight:bold;">${fgQty.toLocaleString()}</td><td class="col-tot calc-cell" style="font-weight:bold;">${totalWipCost.toFixed(2)}</td></tr>`;
+        
+        html += creditLines.join('');
+        html += `</tbody></table></div>`;
+        document.getElementById('costingTabContent').innerHTML = html;
+    } <table class="costing-table data-table" style="width:100% !important; min-width: 600px !important;">
+                <thead><tr>
+                    <th style="text-align:left; width: auto;">Line Item Generated ID</th>
+                    <th style="text-align:left; width: auto;">Mapped QBO Category</th>
                     <th class="col-tot">Cost Value</th>
                 </tr></thead>
                 <tbody>
