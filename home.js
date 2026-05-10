@@ -85,7 +85,7 @@ export default class Home {
             </style>
             
             <div class="container" style="padding-top: 0.25rem;">
-                <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.4rem;">VilSync to QBO: Amazon Integrator</h2>
+                <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.4rem;">VillSync to QBO: Amazon Integrator</h2>
                 <p style="color: #666; font-size: 0.85rem; margin-top: 0;">Upload your <strong>AMAZON_DATE_RANGE_REPORT.csv</strong> exactly as downloaded, without any edits.</p>
                 <div id="alertBox" class="alert" style="margin-bottom: 0.25rem; padding: 0.4rem;"></div>
 
