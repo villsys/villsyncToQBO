@@ -35,72 +35,95 @@ export default class ProductCostBuilder {
                     --btn-bg: #28a745; --btn-del: #dc3545;
                 }
                 
-                .costing-dashboard { width: 100%; background: #fff; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 8px; }
+                .costing-dashboard { width: 100%; background: #fff; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 8px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
                 .costing-dashboard h2 { color: var(--header-bg); font-size: 14px; margin-top: 15px; margin-bottom: 5px; text-transform: uppercase; }
                 
                 .main-layout { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
                 .left-column { flex: 1.5; min-width: 55%; display: flex; flex-direction: column; gap: 10px; }
                 .right-column { flex: 1; min-width: 40%; display: flex; flex-direction: column; gap: 10px; }
                 
-                .table-responsive { width: 100%; overflow-x: auto; margin-bottom: 10px; }
+                .table-responsive { width: 100%; margin-bottom: 10px; }
                 
-                /* Layout Optimization */
                 table.costing-table { 
                     border-collapse: collapse !important; 
                     font-size: 0.85rem !important; 
                     table-layout: auto !important; 
-                    width: auto !important; 
-                    min-width: 0 !important; 
+                    width: 100% !important; 
                 }
-                
-                /* Table 1 Specific Fix: Force it to take full width and let input expand */
-                #params-table { width: 100% !important; }
-                #params-table td:nth-child(2) { width: 100%; }
                 
                 table.costing-table th, table.costing-table td { border: 1px solid var(--border-color); padding: 4px 8px; text-align: left; }
-                table.costing-table th { background-color: var(--header-bg); color: var(--header-text); text-align: center; font-weight: normal; white-space: nowrap; }
+                table.costing-table th { background-color: var(--header-bg); color: var(--header-text); text-align: center; font-weight: normal; }
                 
-                /* Cell containing inputs gets tiny padding */
-                table.costing-table td.input-cell { padding-left: 2px !important; padding-right: 2px !important; }
+                /* Tightly wrap labels, inputs take remaining space */
+                .label-cell { background-color: var(--accent-bg); font-weight: bold; white-space: nowrap; padding-right: 15px !important; width: 1%; }
+                .calc-cell { background-color: var(--calc-bg); text-align: right; }
                 
-                /* Column Width Optimizations */
-                table.costing-table td.label-cell { background-color: var(--accent-bg); font-weight: bold; white-space: nowrap; padding-right: 20px !important; width: 1%; }
-                table.costing-table td.calc-cell { background-color: var(--calc-bg); text-align: right; white-space: nowrap; width: 1%; }
-                table.costing-table td.dropdown-cell { width: 1%; white-space: nowrap; } 
-                
+                /* Input Styles */
                 .costing-table input { box-sizing: border-box; background-color: var(--input-bg); border: 1px solid #ccc; padding: 3px; width: 100%; }
+                .costing-table select { background-color: var(--input-bg); border: 1px solid #ccc; padding: 3px; width: 100%; }
                 
-                /* Number Input Restrictions & Removing Arrows */
-                .costing-table input[type="number"] { text-align: right; -moz-appearance: textfield; }
-                .costing-table input[type="number"]::-webkit-outer-spin-button,
-                .costing-table input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+                /* Table 1 & 6 specific: input takes remaining width */
+                #params-table td:nth-child(2), #pricing-table td:nth-child(2) { padding: 0 !important; }
+                #params-table input, #pricing-table input { width: 100%; border: none; padding: 4px 8px; text-align: left !important; }
                 
-                /* Width locks for Tables 2, 3, 4 */
-                table.costing-table input.num-small { max-width: 60px; min-width: 60px; } /* Accommodates 9,999.99 */
-                table.costing-table input.num-large { max-width: 90px; min-width: 90px; } /* Accommodates 99,999,999.99 */
-                
-                /* Totals and WIP Cells */
-                table.costing-table td.total-col { min-width: 90px; max-width: 90px; }
-                table.costing-table td.wip-col { min-width: 90px; max-width: 90px; }
+                /* Remove annoying number spinners (incrementor/decrementor) */
+                input[type="number"]::-webkit-outer-spin-button,
+                input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+                input[type="number"] { -moz-appearance: textfield; }
 
-                /* Select boxes shrink to their content */
-                .costing-table select { 
-                    background-color: var(--input-bg); 
-                    border: 1px solid #ccc; 
-                    padding: 3px; 
-                    width: max-content; 
-                    max-width: 300px;
-                }
+                /* Data Table Column Strict Widths (Tables 2, 3, 4) */
+                .data-table th, .data-table td { padding: 4px !important; white-space: normal; word-wrap: break-word; }
+                
+                /* First column (Add/Delete button) */
+                .data-table th:nth-child(1), .data-table td:nth-child(1) { width: 30px; min-width: 30px; text-align: center; }
+                
+                /* Dropdown columns take remaining space natively, no strict width needed */
+                
+                /* Number columns: Qty, Cost/Unit, Rate, Hrs, Comp% (Accommodates 9,999.99) */
+                .col-num { width: 60px; min-width: 60px; max-width: 60px; text-align: center; }
+                .col-num input { text-align: right; width: 100%; }
+                
+                /* Total columns: Total Cost, WIP Cost (Accommodates 99,999,999.99) */
+                .col-tot { width: 90px; min-width: 90px; max-width: 90px; text-align: right; }
+
+                /* Reduce left/right padding for cells containing inputs */
+                td.input-cell { padding-left: 2px !important; padding-right: 2px !important; }
                 
                 .total-row td { font-weight: bold; background-color: var(--accent-bg); border-top: 2px solid var(--header-bg); }
                 
                 .toolbar { display: flex; gap: 10px; margin-bottom: 15px; background: #e9ecef; padding: 8px 10px; border-radius: 5px; flex-wrap: wrap; align-items: center; }
-                .btn-add { background-color: var(--btn-bg); color: white; border: none; padding: 2px 8px; cursor: pointer; border-radius: 3px; }
-                .btn-del { background-color: var(--btn-del); color: white; border: none; padding: 2px 8px; cursor: pointer; border-radius: 3px; }
+                .btn-add { background-color: var(--btn-bg); color: white; border: none; padding: 2px 8px; cursor: pointer; border-radius: 3px; font-weight:bold; }
+                .btn-del { background-color: var(--btn-del); color: white; border: none; padding: 2px 8px; cursor: pointer; border-radius: 3px; font-weight:bold; }
                 
                 #lock-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.9); z-index: 1000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
                 .lock-modal { background: #f8f9fa; border: 2px solid var(--header-bg); padding: 2rem; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); width: 400px; }
                 .lock-modal input { width: 100%; padding: 0.5rem; margin-bottom: 1rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+
+                /* Mobile View: Horizontal Scroll ONLY for data tables (2, 3, 4) */
+                @media (max-width: 768px) {
+                    .scroll-mobile { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+                    .data-table { min-width: 600px; /* Forces scroll bar to appear */ }
+                    
+                    /* Make the first two/three columns sticky so user knows what row they are looking at */
+                    .data-table th:nth-child(1), .data-table td:nth-child(1),
+                    .data-table th:nth-child(2), .data-table td:nth-child(2),
+                    .data-table th:nth-child(3), .data-table td:nth-child(3) {
+                        position: sticky; z-index: 2; background-color: #fff;
+                    }
+                    /* Keep headers dark */
+                    .data-table th:nth-child(1), .data-table th:nth-child(2), .data-table th:nth-child(3) {
+                        background-color: var(--header-bg); z-index: 3;
+                    }
+                    /* Stagger the sticky positioning */
+                    .data-table th:nth-child(1), .data-table td:nth-child(1) { left: 0; }
+                    #bom-table th:nth-child(2), #bom-table td:nth-child(2) { left: 30px; box-shadow: 2px 0 5px -2px rgba(0,0,0,0.2); }
+                    
+                    #labor-table th:nth-child(2), #labor-table td:nth-child(2),
+                    #overhead-table th:nth-child(2), #overhead-table td:nth-child(2) { left: 30px; }
+                    
+                    #labor-table th:nth-child(3), #labor-table td:nth-child(3),
+                    #overhead-table th:nth-child(3), #overhead-table td:nth-child(3) { left: 130px; box-shadow: 2px 0 5px -2px rgba(0,0,0,0.2); }
+                }
             </style>
 
             <div class="container" style="padding-top: 0.25rem;">
@@ -138,36 +161,36 @@ export default class ProductCostBuilder {
                                 <h2>1. Batch Production Parameters</h2>
                                 <div class="table-responsive">
                                     <table class="costing-table" id="params-table">
-                                        <tr><td class="label-cell">Input Target Volume (Liters)</td><td class="input-cell"><input type="number" id="p_vol" class="calc-trigger" value="50.00"></td></tr>
-                                        <tr><td class="label-cell">Alcohol Evaporation Rate (%)</td><td class="input-cell"><input type="number" id="p_evap" class="calc-trigger" value="8"></td></tr>
-                                        <tr><td class="label-cell">Molding Scrap/Rejection Rate (%)</td><td class="input-cell"><input type="number" id="p_scrap" class="calc-trigger" value="4"></td></tr>
-                                        <tr><td class="label-cell">Expected Gummies per Liter</td><td class="input-cell"><input type="number" id="p_gpl" class="calc-trigger" value="250"></td></tr>
-                                        <tr><td class="label-cell">Gummies per Pack</td><td class="input-cell"><input type="number" id="p_gpp" class="calc-trigger" value="10"></td></tr>
+                                        <tr><td class="label-cell">Input Target Volume (Liters)</td><td><input type="number" id="p_vol" class="calc-trigger" value="50.00" style="text-align:left;"></td></tr>
+                                        <tr><td class="label-cell">Alcohol Evaporation Rate (%)</td><td><input type="number" id="p_evap" class="calc-trigger" value="8" style="text-align:left;"></td></tr>
+                                        <tr><td class="label-cell">Molding Scrap/Rejection Rate (%)</td><td><input type="number" id="p_scrap" class="calc-trigger" value="4" style="text-align:left;"></td></tr>
+                                        <tr><td class="label-cell">Expected Gummies per Liter</td><td><input type="number" id="p_gpl" class="calc-trigger" value="250" style="text-align:left;"></td></tr>
+                                        <tr><td class="label-cell">Gummies per Pack</td><td><input type="number" id="p_gpp" class="calc-trigger" value="10" style="text-align:left;"></td></tr>
                                     </table>
                                 </div>
                             </div>
 
                             <div>
                                 <h2>2. Direct Materials (BOM)</h2>
-                                <div class="table-responsive">
-                                    <table class="costing-table" id="bom-table">
+                                <div class="scroll-mobile">
+                                    <table class="costing-table data-table" id="bom-table">
                                         <thead>
                                             <tr>
-                                                <th style="width: 30px;"><button class="btn-add" id="addBomBtn">+</button></th>
+                                                <th><button class="btn-add" id="addBomBtn">+</button></th>
                                                 <th>Raw Material Ingredient</th>
-                                                <th>Qty</th>
-                                                <th>Cost/Unit</th>
-                                                <th>Total Batch Material Cost</th>
-                                                <th>% Comp</th>
-                                                <th class="dynamic-cost-header">WIP Cost</th>
+                                                <th class="col-num">Qty</th>
+                                                <th class="col-num">Cost/Unit</th>
+                                                <th class="col-tot">Total Batch Cost</th>
+                                                <th class="col-num">% Comp</th>
+                                                <th class="col-tot dynamic-cost-header">WIP Cost</th>
                                             </tr>
                                         </thead>
                                         <tbody id="bom-tbody"></tbody>
                                         <tr class="total-row">
                                             <td colspan="4" style="text-align: right;">TOTAL RAW MATERIAL COST:</td>
-                                            <td class="calc-cell total-col" id="bom_cost_total">$0.00</td>
+                                            <td class="col-tot calc-cell" id="bom_cost_total">$0.00</td>
                                             <td></td>
-                                            <td class="calc-cell wip-col" id="bom_wip_total">$0.00</td>
+                                            <td class="col-tot calc-cell" id="bom_wip_total">$0.00</td>
                                         </tr>
                                     </table>
                                 </div>
@@ -175,26 +198,26 @@ export default class ProductCostBuilder {
 
                             <div>
                                 <h2>3. Labor Burden Calculator</h2>
-                                <div class="table-responsive">
-                                    <table class="costing-table" id="labor-table">
+                                <div class="scroll-mobile">
+                                    <table class="costing-table data-table" id="labor-table">
                                         <thead>
                                             <tr>
-                                                <th style="width: 30px;"><button class="btn-add" id="addLaborBtn">+</button></th>
+                                                <th><button class="btn-add" id="addLaborBtn">+</button></th>
                                                 <th>Production Stage</th>
                                                 <th>Employee Function</th>
-                                                <th>Total Rate</th>
-                                                <th>Batch Hrs</th>
-                                                <th>Total Batch Labor Cost</th>
-                                                <th>% Comp</th>
-                                                <th class="dynamic-cost-header">WIP Cost</th>
+                                                <th class="col-num">Total Rate</th>
+                                                <th class="col-num">Batch Hrs</th>
+                                                <th class="col-tot">Total Labor Cost</th>
+                                                <th class="col-num">% Comp</th>
+                                                <th class="col-tot dynamic-cost-header">WIP Cost</th>
                                             </tr>
                                         </thead>
                                         <tbody id="labor-tbody"></tbody>
                                         <tr class="total-row">
                                             <td colspan="5" style="text-align: right;">TOTAL BATCH LABOR COST:</td>
-                                            <td class="calc-cell total-col" id="labor_cost_total">$0.00</td>
+                                            <td class="col-tot calc-cell" id="labor_cost_total">$0.00</td>
                                             <td></td>
-                                            <td class="calc-cell wip-col" id="labor_wip_total">$0.00</td>
+                                            <td class="col-tot calc-cell" id="labor_wip_total">$0.00</td>
                                         </tr>
                                     </table>
                                 </div>
@@ -202,26 +225,26 @@ export default class ProductCostBuilder {
 
                             <div>
                                 <h2>4. Straight Overhead Calculator</h2>
-                                <div class="table-responsive">
-                                    <table class="costing-table" id="overhead-table">
+                                <div class="scroll-mobile">
+                                    <table class="costing-table data-table" id="overhead-table">
                                         <thead>
                                             <tr>
-                                                <th style="width: 30px;"><button class="btn-add" id="addOhBtn">+</button></th>
+                                                <th><button class="btn-add" id="addOhBtn">+</button></th>
                                                 <th>Production Stage</th>
                                                 <th>Overhead Cost Label</th>
-                                                <th>Total Rate</th>
-                                                <th>Batch Hrs</th>
-                                                <th>Total Batch O.H. Cost</th>
-                                                <th>% Comp</th>
-                                                <th class="dynamic-cost-header">WIP Cost</th>
+                                                <th class="col-num">Total Rate</th>
+                                                <th class="col-num">Batch Hrs</th>
+                                                <th class="col-tot">Total O.H. Cost</th>
+                                                <th class="col-num">% Comp</th>
+                                                <th class="col-tot dynamic-cost-header">WIP Cost</th>
                                             </tr>
                                         </thead>
                                         <tbody id="oh-tbody"></tbody>
                                         <tr class="total-row">
                                             <td colspan="5" style="text-align: right;">TOTAL BATCH O.H. COST:</td>
-                                            <td class="calc-cell total-col" id="oh_cost_total">$0.00</td>
+                                            <td class="col-tot calc-cell" id="oh_cost_total">$0.00</td>
                                             <td></td>
-                                            <td class="calc-cell wip-col" id="oh_wip_total">$0.00</td>
+                                            <td class="col-tot calc-cell" id="oh_wip_total">$0.00</td>
                                         </tr>
                                     </table>
                                 </div>
@@ -232,7 +255,7 @@ export default class ProductCostBuilder {
                             <div>
                                 <h2>5. Process Yield & Unit Cost Summary</h2>
                                 <div class="table-responsive">
-                                    <table class="costing-table" id="yield-table" style="width:100% !important;">
+                                    <table class="costing-table" id="yield-table">
                                         <tr><td class="label-cell">Starting Volume (Liters)</td><td class="calc-cell" id="y_start">0.00</td></tr>
                                         <tr><td class="label-cell">Less: Evaporation Loss</td><td class="calc-cell" id="y_evap">0.00</td></tr>
                                         <tr><td class="label-cell">Less: Molding Scrap</td><td class="calc-cell" id="y_scrap">0.00</td></tr>
@@ -243,7 +266,7 @@ export default class ProductCostBuilder {
                                         <tr><td class="label-cell">COST PER FINISHED GUMMY</td><td class="calc-cell" id="s_cpg" style="font-weight: bold;">$0.00</td></tr>
                                         <tr><td colspan="2" style="border: none; padding: 5px;"></td></tr>
                                         <tr><td class="label-cell">Total Cost of Gummies per Pack</td><td class="calc-cell" id="s_cost_per_pack_gummies">$0.00</td></tr>
-                                        <tr><td class="label-cell">Add: Packaging Cost per Pack</td><td class="input-cell" style="width:100%"><input type="number" id="p_pack_cost" class="calc-trigger" value="0.18" style="width:100%;"></td></tr>
+                                        <tr><td class="label-cell" style="padding-right:0 !important; width:60%;">Add: Packaging Cost per Pack <span style="float:right; margin-right:5px; color:#666;">$</span></td><td class="input-cell" style="padding:0 !important;"><input type="number" id="p_pack_cost" class="calc-trigger" value="0.18" style="width:100%; border:none; padding:4px;"></td></tr>
                                         <tr class="total-row"><td class="label-cell">TOTAL COST PER PACK / BAG</td><td class="calc-cell" id="s_total_pack_cost" style="font-weight: bold;">$0.00</td></tr>
                                     </table>
                                 </div>
@@ -252,8 +275,8 @@ export default class ProductCostBuilder {
                             <div>
                                 <h2>6. Pricing & Margin Analysis</h2>
                                 <div class="table-responsive">
-                                    <table class="costing-table" id="pricing-table" style="width:100% !important;">
-                                        <tr><td class="label-cell">Target Profit Margin (%)</td><td class="input-cell" style="width:100%"><input type="number" id="p_margin" class="calc-trigger" value="65" style="width:100%;"></td></tr>
+                                    <table class="costing-table" id="pricing-table">
+                                        <tr><td class="label-cell">Target Profit Margin (%)</td><td><input type="number" id="p_margin" class="calc-trigger" value="65" style="text-align:left;"></td></tr>
                                         <tr class="total-row"><td class="label-cell">Recommended Wholesale Price (Per Pack)</td><td class="calc-cell" id="p_wholesale">$0.00</td></tr>
                                     </table>
                                 </div>
@@ -353,7 +376,9 @@ export default class ProductCostBuilder {
         const pushBtn = document.getElementById('pushQboBtn');
         if (this.userRole !== 'guest') {
             pushBtn.disabled = false;
+            pushBtn.title = "Push these entries to QBO";
         } else {
+            pushBtn.disabled = true;
             pushBtn.title = "Available to Subscribers/Admins only";
         }
     }
@@ -431,12 +456,12 @@ export default class ProductCostBuilder {
         tr.className = 'bom-row line-row';
         tr.innerHTML = `
             <td><button class="btn-del" onclick="this.closest('tr').remove(); window.calcTrigger()">-</button></td>
-            <td class="dropdown-cell">${this.generateSelectHtml(this.rawMaterials, 'b-item', 'window.calcTrigger()', item)}</td>
-            <td class="input-cell"><input type="number" class="b-qty calc-trigger num-small" value="${qty}"></td>
-            <td class="input-cell"><input type="number" class="b-cost calc-trigger num-small" value="${cost}"></td>
-            <td class="calc-cell b-total total-col">0.00</td>
-            <td class="input-cell"><input type="number" class="b-comp calc-trigger num-small" value="${comp}" max="100" min="0"></td>
-            <td class="calc-cell b-wip wip-col">0.00</td>
+            <td class="input-cell">${this.generateSelectHtml(this.rawMaterials, 'b-item', 'window.calcTrigger()', item)}</td>
+            <td class="col-num input-cell"><input type="number" class="b-qty calc-trigger" value="${qty}"></td>
+            <td class="col-num input-cell"><input type="number" class="b-cost calc-trigger" value="${cost}"></td>
+            <td class="col-tot calc-cell b-total">0.00</td>
+            <td class="col-num input-cell"><input type="number" class="b-comp calc-trigger" value="${comp}" max="100" min="0"></td>
+            <td class="col-tot calc-cell b-wip">0.00</td>
         `;
         document.getElementById('bom-tbody').appendChild(tr);
         this.attachTriggers();
@@ -447,13 +472,13 @@ export default class ProductCostBuilder {
         tr.className = 'labor-row line-row';
         tr.innerHTML = `
             <td><button class="btn-del" onclick="this.closest('tr').remove(); window.calcTrigger()">-</button></td>
-            <td class="dropdown-cell">${this.generateSelectHtml(this.productionStages, 'l-stage', 'window.calcTrigger()', stage)}</td>
-            <td class="dropdown-cell">${this.generateSelectHtml(this.laborItems, 'l-func', 'window.calcTrigger()', func)}</td>
-            <td class="input-cell"><input type="number" class="l-rate calc-trigger num-small" value="${rate}"></td>
-            <td class="input-cell"><input type="number" class="l-bhrs calc-trigger num-small" value="${bhrs}"></td>
-            <td class="calc-cell l-total total-col">0.00</td>
-            <td class="input-cell"><input type="number" class="l-comp calc-trigger num-small" value="${comp}" max="100" min="0"></td>
-            <td class="calc-cell l-wip wip-col">0.00</td>
+            <td class="input-cell">${this.generateSelectHtml(this.productionStages, 'l-stage', 'window.calcTrigger()', stage)}</td>
+            <td class="input-cell">${this.generateSelectHtml(this.laborItems, 'l-func', 'window.calcTrigger()', func)}</td>
+            <td class="col-num input-cell"><input type="number" class="l-rate calc-trigger" value="${rate}"></td>
+            <td class="col-num input-cell"><input type="number" class="l-bhrs calc-trigger" value="${bhrs}"></td>
+            <td class="col-tot calc-cell l-total">0.00</td>
+            <td class="col-num input-cell"><input type="number" class="l-comp calc-trigger" value="${comp}" max="100" min="0"></td>
+            <td class="col-tot calc-cell l-wip">0.00</td>
         `;
         document.getElementById('labor-tbody').appendChild(tr);
         this.attachTriggers();
@@ -464,13 +489,13 @@ export default class ProductCostBuilder {
         tr.className = 'oh-row line-row';
         tr.innerHTML = `
             <td><button class="btn-del" onclick="this.closest('tr').remove(); window.calcTrigger()">-</button></td>
-            <td class="dropdown-cell">${this.generateSelectHtml(this.productionStages, 'o-stage', 'window.calcTrigger()', stage)}</td>
-            <td class="dropdown-cell">${this.generateSelectHtml(this.overheadItems, 'o-label', 'window.calcTrigger()', label)}</td>
-            <td class="input-cell"><input type="number" class="o-rate calc-trigger num-small" value="${rate}"></td>
-            <td class="input-cell"><input type="number" class="o-bhrs calc-trigger num-small" value="${bhrs}"></td>
-            <td class="calc-cell o-total total-col">0.00</td>
-            <td class="input-cell"><input type="number" class="o-comp calc-trigger num-small" value="${comp}" max="100" min="0"></td>
-            <td class="calc-cell o-wip wip-col">0.00</td>
+            <td class="input-cell">${this.generateSelectHtml(this.productionStages, 'o-stage', 'window.calcTrigger()', stage)}</td>
+            <td class="input-cell">${this.generateSelectHtml(this.overheadItems, 'o-label', 'window.calcTrigger()', label)}</td>
+            <td class="col-num input-cell"><input type="number" class="o-rate calc-trigger" value="${rate}"></td>
+            <td class="col-num input-cell"><input type="number" class="o-bhrs calc-trigger" value="${bhrs}"></td>
+            <td class="col-tot calc-cell o-total">0.00</td>
+            <td class="col-num input-cell"><input type="number" class="o-comp calc-trigger" value="${comp}" max="100" min="0"></td>
+            <td class="col-tot calc-cell o-wip">0.00</td>
         `;
         document.getElementById('oh-tbody').appendChild(tr);
         this.attachTriggers();
@@ -625,8 +650,8 @@ export default class ProductCostBuilder {
             <table class="costing-table" style="width:100% !important;">
                 <thead><tr>
                     <th style="text-align:left;">Account</th>
-                    <th style="text-align:right;">Debit</th>
-                    <th style="text-align:right;">Credit</th>
+                    <th style="text-align:right; width: 100px;">Debit</th>
+                    <th style="text-align:right; width: 100px;">Credit</th>
                     <th style="text-align:left;">Memo</th>
                 </tr></thead>
                 <tbody>
@@ -684,7 +709,7 @@ export default class ProductCostBuilder {
                 <thead><tr>
                     <th style="text-align:left;">Line Item Generated ID</th>
                     <th style="text-align:left;">Mapped QBO Category</th>
-                    <th style="text-align:right;">Cost Value</th>
+                    <th style="text-align:right; width: 150px;">Cost Value</th>
                 </tr></thead>
                 <tbody>
         `;
@@ -731,9 +756,9 @@ export default class ProductCostBuilder {
 
             html += `<tr>
                 <td style="white-space:nowrap;"><strong>${lineItem}</strong></td>
-                <td class="input-cell"><input type="text" id="unmap-cat-${i}" value="${suggestedCategory}" placeholder="QBO Account Name"></td>
-                <td class="dropdown-cell">
-                    <select id="unmap-type-${i}" style="width:100%;">
+                <td><input type="text" id="unmap-cat-${i}" value="${suggestedCategory}" placeholder="QBO Account Name" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
+                <td>
+                    <select id="unmap-type-${i}" style="padding:0.4rem; width:100%; box-sizing: border-box;">
                         <option value="Income" ${suggestedType === 'Income' ? 'selected' : ''}>Income</option>
                         <option value="Expense" ${suggestedType === 'Expense' ? 'selected' : ''}>Expense</option>
                         <option value="Bank" ${suggestedType === 'Bank' ? 'selected' : ''}>Bank / Clearing</option>
@@ -742,7 +767,7 @@ export default class ProductCostBuilder {
                     </select>
                 </td>
                 <td style="text-align:center;">${sourceBadge}</td>
-                <td class="input-cell"><input type="text" id="unmap-desc-${i}" placeholder="Optional notes"></td>
+                <td><input type="text" id="unmap-desc-${i}" placeholder="Optional notes" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
                 <td style="text-align:center; display:flex; gap:5px; justify-content:center;">
                     <button class="btn" style="background:#27ae60; color:white; font-weight:bold; padding:0.4rem 0.8rem; border-radius:3px;" onclick="window.pushAndSaveCostingMapping('${lineItem}', ${i}, '${suggestedCategory}')">Save</button>
                     <button class="btn outline" style="padding:0.4rem 0.8rem; border-radius:3px;" onclick="window.viewMappingHistory('${lineItem}')">📜 History</button>
