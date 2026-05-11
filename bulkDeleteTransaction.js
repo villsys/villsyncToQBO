@@ -64,7 +64,10 @@ export default class BulkDeleteTransaction {
                                 <option value="Purchase">Expenses / Purchases</option>
                                 <option value="Invoice">Invoices</option>
                                 <option value="Payment">Payments</option>
-                                <option value="BillPayment">Bill Payments</option> </select>
+                                <option value="Bill">Bills</option>
+                                <option value="BillPayment">Bill Payments</option>
+                                <option value="InventoryAdjustment">Inventory Adjustments</option>
+                            </select>
                         </div>
                         <div>
                             <label>Start Date:</label><br>
