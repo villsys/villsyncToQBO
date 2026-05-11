@@ -64,7 +64,7 @@ export default class BulkDeleteTransaction {
                                 <option value="Purchase">Expenses / Purchases</option>
                                 <option value="Invoice">Invoices</option>
                                 <option value="Payment">Payments</option>
-                            </select>
+                                <option value="BillPayment">Bill Payments</option> </select>
                         </div>
                         <div>
                             <label>Start Date:</label><br>
@@ -240,7 +240,6 @@ export default class BulkDeleteTransaction {
         
         tbody.innerHTML = html;
 
-        // Attaching UI selection helpers
         window.toggleDeleteRow = (id, isChecked) => {
             const row = this.transactions.find(t => t.id === id);
             if (row) row.selected = isChecked;
@@ -303,7 +302,6 @@ export default class BulkDeleteTransaction {
         try {
             const bulkDeleteQboTransactions = httpsCallable(functions, 'bulkDeleteQboTransactions');
             
-            // Backend timeout protection: Chunk deletions into groups of 20
             const chunkSize = 20; 
             let totalDeleted = 0;
             let allFailedIds = [];
