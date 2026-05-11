@@ -1,3 +1,4 @@
+// home.js
 import { db } from './auth.js'; 
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 import { currentUser } from './app.js';
@@ -41,7 +42,7 @@ export default class Home {
 
             <div class="hub-container">
                 <div class="hub-header">
-                    <h1>Welcome to VilBooks</h1>
+                    <h1>Welcome to VillSync to QBO</h1>
                     <p>Select an integration tool below to manage your QuickBooks Online data.</p>
                 </div>
 
@@ -188,7 +189,7 @@ export default class Home {
             <a href="#/amazon" class="tool-card">
                 <h3>Amazon Integrator</h3>
                 <div><span class="badge badge-pro">Data Push Module</span></div>
-                <p>Automatically synthesize and push Amazon Date Range Reports directly into QBO.</p>
+                <p>Synthesize transactions generated from the Amazon <em>'Transaction View / All Account Types / Custom Date Range'</em> report and push entries directly to QBO.</p>
                 <div class="guest-limits" style="border-left-color: ${isAmazonAdmin ? '#27ae60' : '#bdc3c7'}; background: ${isAmazonAdmin ? '#e8f8f5' : '#f8f9fa'};">
                     ${isAmazonAdmin 
                         ? `<strong style="color:#27ae60;">Admin Access:</strong> Has unlimited data parsing and unlimited journal entry data pushes per month.` 
@@ -199,7 +200,7 @@ export default class Home {
             <a href="#/shopify" class="tool-card">
                 <h3>Shopify Integrator</h3>
                 <div><span class="badge badge-pro">Data Push Module</span></div>
-                <p>Process Shopify Orders and Payouts, automatically extracting payment processor fees.</p>
+                <p>Synthesize transactions from your Shopify <em>'orders_export'</em> and <em>'payment_transactions_export'</em> reports and push entries directly to QBO.</p>
                 <div class="guest-limits" style="border-left-color: ${isShopifyAdmin ? '#27ae60' : '#bdc3c7'}; background: ${isShopifyAdmin ? '#e8f8f5' : '#f8f9fa'};">
                     ${isShopifyAdmin 
                         ? `<strong style="color:#27ae60;">Admin Access:</strong> Has unlimited data parsing and unlimited individual transaction pushes per month.` 
@@ -213,7 +214,7 @@ export default class Home {
                     <span class="badge badge-free">Utility</span>
                     <span class="badge badge-pro">Data Push Module</span>
                 </div>
-                <p>Build Bill of Materials (BOM), calculate landed costs, estimate wholesale pricing, and push journal entries to build materials, labor, and overhead into finished goods inventory.</p>
+                <p>Build Bills of Materials, calculate landed costs, estimate pricing, and push journal entries to QBO to build materials, labor, and overhead into finished goods inventory.</p>
                 <div class="guest-limits" style="border-left-color: ${isProductCostAdmin ? '#27ae60' : '#bdc3c7'}; background: ${isProductCostAdmin ? '#e8f8f5' : '#f8f9fa'};">
                     ${isProductCostAdmin 
                         ? `<strong style="color:#27ae60;">Admin Access:</strong> Has full calculation access and unlimited Journal/Adjustment pushes directly to QBO.` 
