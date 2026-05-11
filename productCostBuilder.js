@@ -1,3 +1,4 @@
+// productCostBuilder.js
 import { db, functions } from './auth.js';
 import { collection, doc, getDoc, setDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-functions.js";
@@ -301,24 +302,36 @@ export default class ProductCostBuilder {
         
         await this.checkUserRole();
 
-        document.getElementById('unlockBtn').addEventListener('click', () => {
-            const cName = document.getElementById('initClientName').value.trim();
-            const pName = document.getElementById('initProductName').value.trim();
-            if (!cName || !pName) return this.showAlert("Client Name and Product Name are required.", "danger");
-            
-            this.batchData.clientName = cName;
-            this.batchData.productName = pName;
-            document.getElementById('dashboard-title-display').innerText = `${cName} - ${pName}_${this.batchData.batchId}`;
-            document.getElementById('lock-overlay').style.display = 'none';
-            this.calculateAll();
-        });
+        // DEFENSIVE BINDING
+        const unlockBtn = document.getElementById('unlockBtn');
+        if (unlockBtn) {
+            unlockBtn.addEventListener('click', () => {
+                const cName = document.getElementById('initClientName').value.trim();
+                const pName = document.getElementById('initProductName').value.trim();
+                if (!cName || !pName) return this.showAlert("Client Name and Product Name are required.", "danger");
+                
+                this.batchData.clientName = cName;
+                this.batchData.productName = pName;
+                document.getElementById('dashboard-title-display').innerText = `${cName} - ${pName}_${this.batchData.batchId}`;
+                document.getElementById('lock-overlay').style.display = 'none';
+                this.calculateAll();
+            });
+        }
 
-        document.getElementById('modalLoadJsonInput').addEventListener('change', (e) => this.loadFromJson(e));
-        document.getElementById('loadJsonInput').addEventListener('change', (e) => this.loadFromJson(e));
+        const modalLoadJsonInput = document.getElementById('modalLoadJsonInput');
+        if (modalLoadJsonInput) modalLoadJsonInput.addEventListener('change', (e) => this.loadFromJson(e));
         
-        document.getElementById('saveJsonBtn').addEventListener('click', () => this.saveToJson());
-        document.getElementById('exportExcelBtn').addEventListener('click', () => this.exportToExcel());
-        document.getElementById('pushQboBtn').addEventListener('click', () => this.handlePushToQbo());
+        const loadJsonInput = document.getElementById('loadJsonInput');
+        if (loadJsonInput) loadJsonInput.addEventListener('change', (e) => this.loadFromJson(e));
+        
+        const saveJsonBtn = document.getElementById('saveJsonBtn');
+        if (saveJsonBtn) saveJsonBtn.addEventListener('click', () => this.saveToJson());
+        
+        const exportExcelBtn = document.getElementById('exportExcelBtn');
+        if (exportExcelBtn) exportExcelBtn.addEventListener('click', () => this.exportToExcel());
+        
+        const pushQboBtn = document.getElementById('pushQboBtn');
+        if (pushQboBtn) pushQboBtn.addEventListener('click', () => this.handlePushToQbo());
 
         const qboSelect = document.getElementById('qboSelect');
         if (qboSelect) {
@@ -333,9 +346,14 @@ export default class ProductCostBuilder {
 
         this.attachGlobalHelpers();
 
-        document.getElementById('addBomBtn').addEventListener('click', () => this.addBomRow());
-        document.getElementById('addLaborBtn').addEventListener('click', () => this.addLaborStageGroup());
-        document.getElementById('addOhBtn').addEventListener('click', () => this.addOhStageGroup());
+        const addBomBtn = document.getElementById('addBomBtn');
+        if (addBomBtn) addBomBtn.addEventListener('click', () => this.addBomRow());
+        
+        const addLaborBtn = document.getElementById('addLaborBtn');
+        if (addLaborBtn) addLaborBtn.addEventListener('click', () => this.addLaborStageGroup());
+        
+        const addOhBtn = document.getElementById('addOhBtn');
+        if (addOhBtn) addOhBtn.addEventListener('click', () => this.addOhStageGroup());
 
         document.querySelectorAll('.calc-trigger').forEach(el => el.addEventListener('input', () => this.calculateAll()));
 
@@ -348,20 +366,28 @@ export default class ProductCostBuilder {
             });
         });
 
-        this.addBomRow();
-        this.addLaborStageGroup();
-        this.addOhStageGroup();
+        // DEFENSIVE CREATION: Only add initial rows if tables actually exist
+        if (document.getElementById('bom-tbody')) this.addBomRow();
+        if (document.getElementById('labor-table')) this.addLaborStageGroup();
+        if (document.getElementById('overhead-table')) this.addOhStageGroup();
     }
 
     async checkUserRole() {
         this.userRole = 'guest'; 
+        
+        // 1. Check for Master Super Admin
         if (currentUser.email === 'vnvcpas.excelimporter@gmail.com') {
             this.userRole = 'super_admin';
         } else {
+            // 2. Check for Tool-Specific Admin (Strict Tool Array Format)
             try {
                 const adminDoc = await getDoc(doc(db, "global_config", "admins"));
-                if (adminDoc.exists() && adminDoc.data()[currentUser.email]) {
-                    this.userRole = 'admin';
+                if (adminDoc.exists()) {
+                    const adminData = adminDoc.data()[currentUser.email];
+                    // Verify the user is an admin AND they have 'productCost' in their tools array
+                    if (adminData && typeof adminData === 'object' && Array.isArray(adminData.tools) && adminData.tools.includes('productCost')) {
+                        this.userRole = 'admin';
+                    }
                 }
             } catch (e) {}
         }
