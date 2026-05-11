@@ -27,8 +27,8 @@ class UnderDevelopmentView {
 }
 
 const routes = {
-    '#/': () => import('./home.js').then(m => m.default),
-    '#/admin': () => import('./admin.js').then(m => m.default),
+    '#/home': () => import('./home.js').then(m => m.default),
+    '#/amazon': () => import('./amazon.js').then(m => m.default),
     '#/shopify': () => import('./shopify.js').then(m => m.default),
     '#/productCostBuilder': () => import('./productCostBuilder.js').then(m => m.default),
     '#/bulkDeleteTransaction': () => import('./bulkDeleteTransaction.js').then(m => m.default),
