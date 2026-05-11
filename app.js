@@ -31,6 +31,7 @@ const routes = {
     '#/admin': () => import('./admin.js').then(m => m.default),
     '#/shopify': () => import('./shopify.js').then(m => m.default),
     '#/productCostBuilder': () => import('./productCostBuilder.js').then(m => m.default),
+    '#/bulkDeleteTransaction': () => import('./bulkDeleteTransaction.js').then(m => m.default),
     '#/paypal': () => Promise.resolve(class extends UnderDevelopmentView { constructor() { super("PayPal"); } }),
     '#/bank': () => Promise.resolve(class extends UnderDevelopmentView { constructor() { super("Bank Transactions"); } }),
     '#/creditcard': () => Promise.resolve(class extends UnderDevelopmentView { constructor() { super("Credit Card Transactions"); } })
