@@ -63,6 +63,7 @@ export default class Home {
                             <div class="checkbox-grid">
                                 <label class="checkbox-item"><input type="checkbox" class="tool-cb" value="amazon"> Amazon Integrator</label>
                                 <label class="checkbox-item"><input type="checkbox" class="tool-cb" value="shopify"> Shopify Integrator</label>
+                                <label class="checkbox-item"><input type="checkbox" class="tool-cb" value="adpPayroll"> ADP Payroll Integrator</label>
                                 <label class="checkbox-item"><input type="checkbox" class="tool-cb" value="productCost"> Product Cost Builder</label>
                                 <label class="checkbox-item"><input type="checkbox" class="tool-cb" value="bulkDelete"> Bulk Delete Utility</label>
                             </div>
@@ -159,7 +160,7 @@ export default class Home {
         
         if (currentUser.email === 'vnvcpas.excelimporter@gmail.com') {
             this.userRole = 'super_admin';
-            this.adminTools = ['amazon', 'shopify', 'productCost', 'bulkDelete'];
+            this.adminTools = ['amazon', 'shopify', 'adpPayroll', 'productCost', 'bulkDelete'];
         } else {
             try {
                 const adminDoc = await getDoc(doc(db, "global_config", "admins"));
@@ -182,6 +183,7 @@ export default class Home {
 
         const isAmazonAdmin = this.adminTools.includes('amazon');
         const isShopifyAdmin = this.adminTools.includes('shopify');
+        const isAdpAdmin = this.adminTools.includes('adpPayroll');
         const isProductCostAdmin = this.adminTools.includes('productCost');
         const isBulkDeleteAdmin = this.adminTools.includes('bulkDelete');
 
@@ -205,6 +207,17 @@ export default class Home {
                     ${isShopifyAdmin 
                         ? `<strong style="color:#27ae60;">Admin Access:</strong> Has unlimited data parsing and unlimited individual transaction pushes per month.` 
                         : `<strong>Guest Access:</strong> View maps & test parsing. Uploads truncated to 10 rows. Max 10 pushes/month.`}
+                </div>
+            </a>
+
+            <a href="#/adpPayroll" class="tool-card">
+                <h3>ADP Payroll Integrator</h3>
+                <div><span class="badge badge-pro">Data Push Module</span></div>
+                <p>Synthesize transactions from your ADP RUN <em>'Payroll Detail Summary'</em> report to automatically allocate wages, prorate taxes, and push balanced journal entries directly to QBO.</p>
+                <div class="guest-limits" style="border-left-color: ${isAdpAdmin ? '#27ae60' : '#bdc3c7'}; background: ${isAdpAdmin ? '#e8f8f5' : '#f8f9fa'};">
+                    ${isAdpAdmin 
+                        ? `<strong style="color:#27ae60;">Admin Access:</strong> Has unlimited data parsing and unlimited journal entry data pushes per month.` 
+                        : `<strong>Guest Access:</strong> View maps & test parsing. Uploads truncated to 50 allocation lines. Max 10 pushes/month.`}
                 </div>
             </a>
 
