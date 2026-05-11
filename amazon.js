@@ -135,21 +135,39 @@ export default class Amazon {
         await this.loadLiveQboData();
         await this.loadCategories();
         
-        document.getElementById('csvFile').addEventListener('change', e => this.handleFileSelect(e));
-        document.getElementById('depositAccount').addEventListener('input', e => {
+        // DEFENSIVE BINDING: Check if elements exist before attaching listeners
+        const csvFileBtn = document.getElementById('csvFile');
+        if (csvFileBtn) csvFileBtn.addEventListener('change', e => this.handleFileSelect(e));
+
+        const depositAccInput = document.getElementById('depositAccount');
+        if (depositAccInput) depositAccInput.addEventListener('input', e => {
             this.depositAccount = e.target.value;
             if(this.activeSubTab === 'journal') this.renderActiveView();
         });
 
-        document.getElementById('startDate').addEventListener('change', e => { this.startDate = e.target.value; this.renderActiveView(); });
-        document.getElementById('endDate').addEventListener('change', e => { this.endDate = e.target.value; this.renderActiveView(); });
-        document.getElementById('syncQboBtn').addEventListener('click', () => this.handlePushToQbo());
-        
-        document.getElementById('viewHistoryBtn').addEventListener('click', () => {
-            if (!currentUser) return this.showAlert("You must be logged in to view history.", "warning");
-            document.getElementById('historyModal').style.display = 'flex';
-            this.loadBatchHistory();
+        const startDateInput = document.getElementById('startDate');
+        if (startDateInput) startDateInput.addEventListener('change', e => {
+            this.startDate = e.target.value;
+            this.renderActiveView();
         });
+
+        const endDateInput = document.getElementById('endDate');
+        if (endDateInput) endDateInput.addEventListener('change', e => {
+            this.endDate = e.target.value;
+            this.renderActiveView();
+        });
+
+        const syncQboBtn = document.getElementById('syncQboBtn');
+        if (syncQboBtn) syncQboBtn.addEventListener('click', () => this.handlePushToQbo());
+        
+        const viewHistoryBtn = document.getElementById('viewHistoryBtn');
+        if (viewHistoryBtn) {
+            viewHistoryBtn.addEventListener('click', () => {
+                if (!currentUser) return this.showAlert("You must be logged in to view history.", "warning");
+                document.getElementById('historyModal').style.display = 'flex';
+                this.loadBatchHistory();
+            });
+        }
 
         document.querySelectorAll('.main-tabs .tab').forEach(tab => {
             tab.addEventListener('click', (e) => {
@@ -162,13 +180,13 @@ export default class Amazon {
                 const statusBar = document.getElementById('pushStatusBar');
                 
                 if (this.activeMainTab === 'unmapped') {
-                    ctrlPanel.style.display = 'flex';
-                    subTabs.style.display = 'none';
-                    statusBar.style.display = 'flex';
+                    if (ctrlPanel) ctrlPanel.style.display = 'flex';
+                    if (subTabs) subTabs.style.display = 'none';
+                    if (statusBar) statusBar.style.display = 'flex';
                 } else {
-                    ctrlPanel.style.display = 'flex';
-                    subTabs.style.display = 'flex';
-                    statusBar.style.display = 'flex';
+                    if (ctrlPanel) ctrlPanel.style.display = 'flex';
+                    if (subTabs) subTabs.style.display = 'flex';
+                    if (statusBar) statusBar.style.display = 'flex';
                 }
                 this.renderActiveView();
             });
@@ -198,13 +216,13 @@ export default class Amazon {
         if (currentUser.email === 'vnvcpas.excelimporter@gmail.com') {
             this.userRole = 'super_admin';
         } else {
-            // 2. Check for Tool-Specific Admin
+            // 2. Check for Tool-Specific Admin (Strict Tool Array Format)
             try {
                 const adminDoc = await getDoc(doc(db, "global_config", "admins"));
                 if (adminDoc.exists()) {
                     const adminData = adminDoc.data()[currentUser.email];
                     // Verify the user is an admin AND they have 'amazon' in their tools array
-                    if (adminData && typeof adminData === 'object' && adminData.tools && adminData.tools.includes('amazon')) {
+                    if (adminData && typeof adminData === 'object' && Array.isArray(adminData.tools) && adminData.tools.includes('amazon')) {
                         this.userRole = 'admin';
                     }
                 }
@@ -231,7 +249,10 @@ export default class Amazon {
             }
         }
         
-        document.getElementById('tabContent').innerHTML = `<p style="padding: 2rem; text-align: center; color: #7f8c8d;">Select a QBO Account and upload an Amazon Date Range Report to begin.</p>`;
+        const tabContent = document.getElementById('tabContent');
+        if (tabContent) {
+            tabContent.innerHTML = `<p style="padding: 2rem; text-align: center; color: #7f8c8d;">Select a QBO Account and upload an Amazon Date Range Report to begin.</p>`;
+        }
         this.updateReadyStatus();
     }
 
