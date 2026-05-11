@@ -1,3 +1,4 @@
+// bulkDeleteTransaction.js
 import { db, functions } from './auth.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-functions.js";
@@ -122,33 +123,50 @@ export default class BulkDeleteTransaction {
         if (!currentUser) return;
         await this.checkUserRole();
 
-        document.getElementById('fetchBtn').addEventListener('click', () => this.fetchData());
-        document.getElementById('deleteBtn').addEventListener('click', () => this.deleteSelected());
+        // DEFENSIVE BINDING: Check if elements exist before attaching listeners
+        const fetchBtn = document.getElementById('fetchBtn');
+        if (fetchBtn) fetchBtn.addEventListener('click', () => this.fetchData());
+
+        const deleteBtn = document.getElementById('deleteBtn');
+        if (deleteBtn) deleteBtn.addEventListener('click', () => this.deleteSelected());
         
-        document.getElementById('selectAllCb').addEventListener('change', (e) => {
-            const isChecked = e.target.checked;
-            this.transactions.forEach(t => t.selected = isChecked);
-            document.querySelectorAll('.row-cb').forEach(cb => cb.checked = isChecked);
-            this.updateDeleteButton();
-        });
+        const selectAllCb = document.getElementById('selectAllCb');
+        if (selectAllCb) {
+            selectAllCb.addEventListener('change', (e) => {
+                const isChecked = e.target.checked;
+                this.transactions.forEach(t => t.selected = isChecked);
+                document.querySelectorAll('.row-cb').forEach(cb => cb.checked = isChecked);
+                this.updateDeleteButton();
+            });
+        }
 
         // Whenever they change the type, clear the table to avoid confusion
-        document.getElementById('txnType').addEventListener('change', (e) => {
-            this.selectedType = e.target.value;
-            this.transactions = [];
-            this.renderTable();
-        });
+        const txnTypeSelect = document.getElementById('txnType');
+        if (txnTypeSelect) {
+            txnTypeSelect.addEventListener('change', (e) => {
+                this.selectedType = e.target.value;
+                this.transactions = [];
+                this.renderTable();
+            });
+        }
     }
 
     async checkUserRole() {
         this.userRole = 'guest'; 
+        
+        // 1. Check for Master Super Admin
         if (currentUser.email === 'vnvcpas.excelimporter@gmail.com') {
             this.userRole = 'super_admin';
         } else {
+            // 2. Check for Tool-Specific Admin (Strict Tool Array Format)
             try {
                 const adminDoc = await getDoc(doc(db, "global_config", "admins"));
-                if (adminDoc.exists() && adminDoc.data()[currentUser.email]) {
-                    this.userRole = 'admin';
+                if (adminDoc.exists()) {
+                    const adminData = adminDoc.data()[currentUser.email];
+                    // Verify the user is an admin AND they have 'bulkDelete' in their tools array
+                    if (adminData && typeof adminData === 'object' && Array.isArray(adminData.tools) && adminData.tools.includes('bulkDelete')) {
+                        this.userRole = 'admin';
+                    }
                 }
             } catch (e) {}
         }
@@ -157,16 +175,17 @@ export default class BulkDeleteTransaction {
         const statusText = document.getElementById('statusText');
         
         if (this.userRole !== 'guest') {
-            roleText.innerHTML = `<span style="color:#27ae60;">Admin | Authorized to Delete</span>`;
-            statusText.innerText = "Ready to fetch and manage QBO data.";
+            if (roleText) roleText.innerHTML = `<span style="color:#27ae60;">Admin | Authorized to Delete</span>`;
+            if (statusText) statusText.innerText = "Ready to fetch and manage QBO data.";
         } else {
-            roleText.innerHTML = `<span style="color:#e74c3c;">Guest | View Only</span>`;
-            statusText.innerText = "Only admin users are allowed to execute bulk deletions.";
+            if (roleText) roleText.innerHTML = `<span style="color:#e74c3c;">Guest | View Only</span>`;
+            if (statusText) statusText.innerText = "Only admin users are allowed to execute bulk deletions.";
         }
     }
 
     showAlert(message, type = "warning") {
         const box = document.getElementById('alertBox');
+        if (!box) return;
         box.innerHTML = message;
         box.className = `alert alert-${type}`;
         box.style.display = 'block';
@@ -201,7 +220,10 @@ export default class BulkDeleteTransaction {
             this.renderTable();
             this.showAlert(`Successfully loaded ${this.transactions.length} transactions.`, "success");
             
-            setTimeout(() => { document.getElementById('alertBox').style.display = 'none'; }, 3000);
+            setTimeout(() => { 
+                const alertBox = document.getElementById('alertBox');
+                if(alertBox) alertBox.style.display = 'none'; 
+            }, 3000);
 
         } catch (error) {
             this.showAlert(`Fetch Failed: ${error.message}`, "danger");
@@ -215,17 +237,18 @@ export default class BulkDeleteTransaction {
         const quickSelectBar = document.getElementById('quickSelectBar');
         const rowCountDisplay = document.getElementById('rowCountDisplay');
         
-        document.getElementById('selectAllCb').checked = false;
+        const selectAllCb = document.getElementById('selectAllCb');
+        if (selectAllCb) selectAllCb.checked = false;
         this.updateDeleteButton();
 
         if (this.transactions.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 2rem; color: #666;">No transactions found for the selected dates.</td></tr>`;
-            quickSelectBar.style.display = 'none';
+            if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 2rem; color: #666;">No transactions found for the selected dates.</td></tr>`;
+            if (quickSelectBar) quickSelectBar.style.display = 'none';
             return;
         }
 
-        quickSelectBar.style.display = 'flex';
-        rowCountDisplay.innerText = `Total Extracted: ${this.transactions.length} rows`;
+        if (quickSelectBar) quickSelectBar.style.display = 'flex';
+        if (rowCountDisplay) rowCountDisplay.innerText = `Total Extracted: ${this.transactions.length} rows`;
 
         let html = '';
         this.transactions.forEach(t => {
@@ -241,14 +264,15 @@ export default class BulkDeleteTransaction {
             `;
         });
         
-        tbody.innerHTML = html;
+        if (tbody) tbody.innerHTML = html;
 
         window.toggleDeleteRow = (id, isChecked) => {
             const row = this.transactions.find(t => t.id === id);
             if (row) row.selected = isChecked;
             
             const allChecked = this.transactions.every(t => t.selected);
-            document.getElementById('selectAllCb').checked = allChecked;
+            const masterCb = document.getElementById('selectAllCb');
+            if (masterCb) masterCb.checked = allChecked;
             this.updateDeleteButton();
         };
 
@@ -264,7 +288,8 @@ export default class BulkDeleteTransaction {
             });
             
             const allChecked = this.transactions.length > 0 && this.transactions.every(t => t.selected);
-            document.getElementById('selectAllCb').checked = allChecked;
+            const masterCb = document.getElementById('selectAllCb');
+            if (masterCb) masterCb.checked = allChecked;
             
             this.updateDeleteButton();
         };
@@ -272,6 +297,8 @@ export default class BulkDeleteTransaction {
 
     updateDeleteButton() {
         const delBtn = document.getElementById('deleteBtn');
+        if (!delBtn) return;
+
         const selectedCount = this.transactions.filter(t => t.selected).length;
         
         if (this.userRole === 'guest') {
@@ -299,8 +326,10 @@ export default class BulkDeleteTransaction {
         const qboSelect = document.getElementById('qboSelect');
         const delBtn = document.getElementById('deleteBtn');
         
-        delBtn.innerText = "Executing Deletion..."; 
-        delBtn.disabled = true;
+        if (delBtn) {
+            delBtn.innerText = "Executing Deletion..."; 
+            delBtn.disabled = true;
+        }
 
         try {
             const bulkDeleteQboTransactions = httpsCallable(functions, 'bulkDeleteQboTransactions');
