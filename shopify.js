@@ -136,21 +136,33 @@ export default class Shopify {
         await this.loadLiveQboData();
         await this.loadCategories();
         
-        document.getElementById('csvFile').addEventListener('change', e => this.handleFileSelect(e));
-        document.getElementById('depositAccount').addEventListener('input', e => {
+        // DEFENSIVE BINDING: Check if elements exist before attaching listeners
+        const csvFileBtn = document.getElementById('csvFile');
+        if (csvFileBtn) csvFileBtn.addEventListener('change', e => this.handleFileSelect(e));
+
+        const depositAccInput = document.getElementById('depositAccount');
+        if (depositAccInput) depositAccInput.addEventListener('input', e => {
             this.depositAccount = e.target.value;
             if(this.activeSubTab === 'journal') this.renderActiveView();
         });
 
-        document.getElementById('startDate').addEventListener('change', e => { this.startDate = e.target.value; this.renderActiveView(); });
-        document.getElementById('endDate').addEventListener('change', e => { this.endDate = e.target.value; this.renderActiveView(); });
-        document.getElementById('syncQboBtn').addEventListener('click', () => this.handlePushToQbo());
+        const startDateInput = document.getElementById('startDate');
+        if (startDateInput) startDateInput.addEventListener('change', e => { this.startDate = e.target.value; this.renderActiveView(); });
+
+        const endDateInput = document.getElementById('endDate');
+        if (endDateInput) endDateInput.addEventListener('change', e => { this.endDate = e.target.value; this.renderActiveView(); });
+
+        const syncQboBtn = document.getElementById('syncQboBtn');
+        if (syncQboBtn) syncQboBtn.addEventListener('click', () => this.handlePushToQbo());
         
-        document.getElementById('viewHistoryBtn').addEventListener('click', () => {
-            if (!currentUser) return this.showAlert("You must be logged in to view history.", "warning");
-            document.getElementById('historyModal').style.display = 'flex';
-            this.loadBatchHistory();
-        });
+        const viewHistoryBtn = document.getElementById('viewHistoryBtn');
+        if (viewHistoryBtn) {
+            viewHistoryBtn.addEventListener('click', () => {
+                if (!currentUser) return this.showAlert("You must be logged in to view history.", "warning");
+                document.getElementById('historyModal').style.display = 'flex';
+                this.loadBatchHistory();
+            });
+        }
 
         this.attachSubTabListeners();
         window.deleteBatch = (batchId, realmId) => this.handleDeleteBatch(batchId, realmId);
@@ -163,12 +175,21 @@ export default class Shopify {
         }
         
         this.userRole = 'guest'; 
+        
+        // 1. Check for Master Super Admin
         if (currentUser.email === 'vnvcpas.excelimporter@gmail.com') {
             this.userRole = 'super_admin';
         } else {
+            // 2. Check for Tool-Specific Admin (Strict Tool Array Format)
             try {
                 const adminDoc = await getDoc(doc(db, "global_config", "admins"));
-                if (adminDoc.exists() && adminDoc.data()[currentUser.email]) this.userRole = 'admin';
+                if (adminDoc.exists()) {
+                    const adminData = adminDoc.data()[currentUser.email];
+                    // Verify the user is an admin AND they have 'shopify' in their tools array
+                    if (adminData && typeof adminData === 'object' && Array.isArray(adminData.tools) && adminData.tools.includes('shopify')) {
+                        this.userRole = 'admin';
+                    }
+                }
             } catch (e) {}
         }
 
@@ -185,6 +206,16 @@ export default class Shopify {
                 this.userProfile.billingPeriodEnd = new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString();
                 await setDoc(profileRef, { monthlyBatchesPushed: 0, billingPeriodEnd: this.userProfile.billingPeriodEnd }, { merge: true });
             }
+            if (this.userProfile.role !== this.userRole) {
+                this.userProfile.role = this.userRole;
+                this.userProfile.monthlyLimit = this.userRole === 'guest' ? 10 : Infinity;
+                await setDoc(profileRef, { role: this.userRole, monthlyLimit: this.userProfile.monthlyLimit }, { merge: true });
+            }
+        }
+        
+        const tabContent = document.getElementById('tabContent');
+        if (tabContent) {
+            tabContent.innerHTML = `<p style="padding: 2rem; text-align: center; color: #7f8c8d;">Select a QBO Account and upload a Shopify Export CSV to begin.</p>`;
         }
         this.updateReadyStatus();
     }
@@ -231,16 +262,17 @@ export default class Shopify {
                 const statusBar = document.getElementById('pushStatusBar');
                 const payTabs = document.getElementById('paymentTabsContainer');
                 
+                // Defensive rendering for UI elements to prevent race conditions
                 if (this.activeMainTab === 'unmapped') {
-                    ctrlPanel.style.display = 'flex';
-                    subTabs.style.display = 'none';
-                    statusBar.style.display = 'flex';
-                    payTabs.style.display = 'none'; 
+                    if (ctrlPanel) ctrlPanel.style.display = 'flex';
+                    if (subTabs) subTabs.style.display = 'none';
+                    if (statusBar) statusBar.style.display = 'flex';
+                    if (payTabs) payTabs.style.display = 'none'; 
                 } else {
-                    ctrlPanel.style.display = 'flex';
-                    subTabs.style.display = 'flex';
-                    statusBar.style.display = 'flex';
-                    payTabs.style.display = 'flex';
+                    if (ctrlPanel) ctrlPanel.style.display = 'flex';
+                    if (subTabs) subTabs.style.display = 'flex';
+                    if (statusBar) statusBar.style.display = 'flex';
+                    if (payTabs) payTabs.style.display = 'flex';
                 }
                 this.renderActiveView();
             });
@@ -1033,11 +1065,11 @@ export default class Shopify {
             return this.showAlert("Monthly push limit reached (10/10). Please subscribe in the UI to continue pushing data.", "danger");
         }
 
-        if (this.activeMainTab === 'all') return this.showAlert("Please select a specific transaction tab (Sales, Refunds, etc.) to push.", "warning");
+        if (this.activeMainTab === 'all' || this.activePaymentMethod === 'all') return this.showAlert("Please select a specific Payment Method AND a specific Transaction tab (Sales, Payouts, etc.) to push.", "warning");
         const qboSelect = document.getElementById('qboSelect');
         if (!qboSelect || !qboSelect.value) return this.showAlert("Please connect and select a QBO account first.", "warning");
 
-        const visibleData = this.getFilteredAndPartitionedData().filter(t => !t.selected);
+        const visibleData = this.getFilteredData().filter(t => !t.selected);
         if (visibleData.length === 0) return this.showAlert("No unchecked transactions in the current view to push.", "warning");
 
         const pushBtn = document.getElementById('syncQboBtn');
@@ -1063,7 +1095,7 @@ export default class Shopify {
         try {
             const config = {
                 realmId: qboSelect.value,
-                depositAccountName: this.depositAccount && this.depositAccount.trim() !== "" ? this.depositAccount : "Payments to Deposit",
+                depositAccountName: this.depositAccount && this.depositAccount.trim() !== "" ? this.depositAccount : "Shopify Clearing",
                 functions: functions,
                 endDate: this.endDate,
                 batchId: `batch_${Date.now()}` 
@@ -1072,13 +1104,22 @@ export default class Shopify {
             let pushedIds = [];
 
             if (this.activeSubTab === 'table') {
-                if (this.activeMainTab === 'sales') pushedIds = await pushSalesReceipts(visibleData, config, this);
-                else if (this.activeMainTab === 'refunds') pushedIds = await pushRefundReceipts(visibleData, config, this);
-                else if (this.activeMainTab === 'deposits') pushedIds = await pushDeposits(visibleData, config, this);
-                else if (this.activeMainTab === 'expenses') pushedIds = await pushExpenses(visibleData, config, this);
-                else if (this.activeMainTab === 'payouts') pushedIds = await pushPayouts(visibleData, config, this);
+                if (this.fileType === 'orders') {
+                    const salesData = visibleData.filter(t => t.qboPushType === 'sales');
+                    if (salesData.length > 0) pushedIds = pushedIds.concat(await pushShopifySalesReceipts(salesData, config, this));
+                    
+                } else if (this.fileType === 'payouts') {
+                    const payoutsData = visibleData.filter(t => t.qboPushType === 'payouts');
+                    const expensesData = visibleData.filter(t => t.qboPushType === 'expenses');
+                    const depositsData = visibleData.filter(t => t.qboPushType === 'deposits');
+
+                    if (payoutsData.length > 0) pushedIds = pushedIds.concat(await pushShopifyPayouts(payoutsData, config, this));
+                    if (expensesData.length > 0) pushedIds = pushedIds.concat(await pushShopifyExpenses(expensesData, config, this));
+                    if (depositsData.length > 0) pushedIds = pushedIds.concat(await pushShopifyDeposits(depositsData, config, this));
+                }
             } else {
-                pushedIds = await this.pushStandardJournalEntry(visibleData, config);
+                this.showAlert("Journal view pushing for Shopify is currently under construction.", "info");
+                throw new Error("Journal View not yet supported for Shopify.");
             }
 
             if (pushedIds && pushedIds.length > 0) {
@@ -1110,7 +1151,6 @@ export default class Shopify {
                     document.getElementById('pushProgressFill').style.width = '0%';
                 }
             }
-
         } catch (error) {
             console.error("Push failed:", error);
             this.showAlert(error.message || "Failed to push to QBO. See console.", "danger");
@@ -1127,255 +1167,6 @@ export default class Shopify {
         }
     }
 
-    async pushStandardJournalEntry(visibleData, config) {
-        const getOrCreateQboAccount = httpsCallable(config.functions, 'getOrCreateQboAccount');
-        const pushJournalEntry = httpsCallable(config.functions, 'pushJournalEntry');
-
-        let depId;
-        const depResponse = await getOrCreateQboAccount({ accountName: config.depositAccountName, realmId: config.realmId, accountType: "Bank" });
-        depId = depResponse.data.id;
-
-        let pushedIds = [];
-
-        if (this.activeMainTab === 'payouts') {
-            const totalTxns = visibleData.length;
-            const totalLines = visibleData.length;
-            let txnsPushed = 0;
-            let linesPushed = 0;
-
-            for (const t of visibleData) {
-                if (!t.category) throw new Error("Missing Categories: Please map all payout line items.");
-                const amt = this.parseAmt(t.total);
-                if (amt === 0) continue;
-
-                const catResponse = await getOrCreateQboAccount({ accountName: t.category, realmId: config.realmId });
-                const qboId = catResponse.data.id;
-
-                const individualLines = [];
-                if (amt < 0) {
-                    individualLines.push({ postingType: "Debit", amount: Math.abs(amt), qboAccountId: qboId, description: t.lineItem });
-                    individualLines.push({ postingType: "Credit", amount: Math.abs(amt), qboAccountId: depId, description: "Payout Transfer Offset" });
-                } else {
-                    individualLines.push({ postingType: "Credit", amount: amt, qboAccountId: qboId, description: t.lineItem });
-                    individualLines.push({ postingType: "Debit", amount: amt, qboAccountId: depId, description: "Payout Transfer Offset" });
-                }
-
-                const tDate = t['date/time'] ? this.getAmazonDateStr(t['date/time']) : null;
-                const res = await pushJournalEntry({ realmId: config.realmId, lines: individualLines, txnDate: tDate, privateNote: `VilBooks Transfer ID: ${t['settlement id'] || 'Manual'}` });
-                pushedIds.push({ type: "JournalEntry", id: res.data.qboResponseId });
-                
-                // Write signature to prevent duplicates later
-                const exactTimeMs = t['date/time'] ? new Date(t['date/time']).getTime() : Date.now();
-                const signature = `PAYOUT_${exactTimeMs}_${t['settlement id']}_${Math.abs(amt).toFixed(2)}`;
-                await setDoc(doc(db, `qbo_companies/${config.realmId}/qbo_sync_ledger`, signature), { batchId: config.batchId, qboId: res.data.qboResponseId, timestamp: new Date().toISOString() });
-                
-                txnsPushed++;
-                linesPushed++;
-                this.updatePushProgress(linesPushed, txnsPushed, totalLines, totalTxns, 'payout');
-            }
-            this.showAlert(`Success! ${visibleData.length} Individual Payout Entries created in QBO.`, "success");
-        } else {
-            let summary = {};
-            let netDeposit = 0;
-            let missingCats = false;
-
-            visibleData.forEach(t => {
-                if (!t.category) missingCats = true;
-                const amt = this.parseAmt(t.total);
-                const key = t.lineItem || "UNCATEGORIZED"; 
-                if (!summary[key]) summary[key] = { amt: 0, catName: t.category };
-                summary[key].amt += amt;
-                netDeposit += amt;
-            });
-
-            if (missingCats) throw new Error("Missing Categories: Please map all line items before pushing.");
-
-            const linesToPush = [];
-            if (netDeposit > 0) {
-                linesToPush.push({ postingType: "Debit", amount: netDeposit, qboAccountId: depId, description: `Total ${this.activeMainTab}` });
-            } else if (netDeposit < 0) {
-                linesToPush.push({ postingType: "Credit", amount: Math.abs(netDeposit), qboAccountId: depId, description: `Total ${this.activeMainTab}` });
-            }
-
-            for (const lineKey of Object.keys(summary)) {
-                const amt = summary[lineKey].amt;
-                if (amt === 0) continue;
-
-                const catResponse = await getOrCreateQboAccount({ accountName: summary[lineKey].catName, realmId: config.realmId });
-                if (amt < 0) linesToPush.push({ postingType: "Debit", amount: Math.abs(amt), qboAccountId: catResponse.data.id, description: lineKey });
-                else linesToPush.push({ postingType: "Credit", amount: amt, qboAccountId: catResponse.data.id, description: lineKey });
-            }
-
-            let summaryDateStr = config.endDate;
-            if (!summaryDateStr) {
-                const dates = visibleData.map(t => new Date(t['date/time']).getTime()).filter(n => !isNaN(n));
-                if (dates.length > 0) summaryDateStr = this.getAmazonDateStr(new Date(Math.max(...dates)).toISOString());
-            }
-
-            const response = await pushJournalEntry({ realmId: config.realmId, lines: linesToPush, txnDate: summaryDateStr, privateNote: `Imported via VilBooks - Tab: ${this.activeMainTab.toUpperCase()}` });
-            if (response.data.success) {
-                this.showAlert(`Success! ${this.activeMainTab.toUpperCase()} Summary Journal Entry created in QBO.`, "success");
-                pushedIds.push({ type: "JournalEntry", id: response.data.qboResponseId });
-                this.updatePushProgress(visibleData.length, 1, visibleData.length, 1, 'journal entry');
-                
-                // --- WRITE INDIVIDUAL SIGNATURES FOR THE JOURNAL ENTRY ---
-                const groups = {};
-                visibleData.forEach(t => {
-                    const oId = t['order id'] || t.uid;
-                    const dateStamp = t['date/time'] || 'nodate';
-                    const settlementId = t['settlement id'] || 'nosettlement';
-                    const groupKey = `${oId}_${dateStamp}_${settlementId}`;
-                    if (!groups[groupKey]) groups[groupKey] = { date: t['date/time'], settlementId: t['settlement id'], lines: [] };
-                    groups[groupKey].lines.push(t);
-                });
-                
-                for (const groupData of Object.values(groups)) {
-                    const exactTimeMs = groupData.date ? new Date(groupData.date).getTime() : Date.now();
-                    let grpAmt = 0;
-                    groupData.lines.forEach(l => grpAmt += Math.abs(this.parseAmt(l.total)));
-                    let prefix = { 'sales': "SALES", 'refunds': "REFUND", 'expenses': "EXP", 'deposits': "DEP" }[this.activeMainTab] || "JRNL";
-                    const signature = `${prefix}_${exactTimeMs}_${groupData.settlementId}_${grpAmt.toFixed(2)}`;
-                    await setDoc(doc(db, `qbo_companies/${config.realmId}/qbo_sync_ledger`, signature), { batchId: config.batchId, qboId: response.data.qboResponseId, timestamp: new Date().toISOString() });
-                }
-            }
-        }
-        return pushedIds;
-    }
-
-    renderJournal() {
-        const currentData = this.getFilteredAndPartitionedData();
-
-        if (currentData.length === 0) {
-            let html = `
-                <div class="table-responsive">
-                <table><thead><tr>
-                    <th>Account / Category</th>
-                    <th style="text-align: right;">Debit</th>
-                    <th style="text-align: right;">Credit</th>
-                    <th>Line Description</th>
-                </tr></thead><tbody>
-                <tr><td colspan="4" style="text-align:center;">No data matches the current filters.</td></tr>
-                </tbody></table></div>`;
-            document.getElementById('tabContent').innerHTML = html;
-            return;
-        }
-
-        const depName = this.depositAccount && this.depositAccount.trim() !== "" ? this.depositAccount : "Payments to Deposit";
-        let html = `<div class="table-responsive">`;
-
-        if (this.activeMainTab === 'payouts') {
-            html += `
-                <table><thead><tr>
-                    <th>Account / Category</th>
-                    <th style="text-align: right;">Debit</th>
-                    <th style="text-align: right;">Credit</th>
-                    <th>Line Description</th>
-                </tr></thead><tbody>
-            `;
-
-            currentData.forEach(t => {
-                const amt = this.parseAmt(t.total);
-                if (amt === 0) return;
-
-                const tDate = t['date/time'] ? this.getAmazonDateStr(t['date/time']) : 'Unknown Date';
-                const catRef = t.category || `<span class="text-danger">Missing</span>`;
-                const absAmt = Math.abs(amt).toFixed(2);
-
-                html += `<tr style="background:#e9ecef;"><td colspan="4"><strong>Date: ${tDate}</strong> (Settlement ID: ${t['settlement id'] || 'N/A'})</td></tr>`;
-
-                if (amt < 0) {
-                    html += `<tr><td>${catRef}</td><td style="text-align: right;">${absAmt}</td><td></td><td>${t.lineItem}</td></tr>`;
-                    html += `<tr style="background:#f8f9fa;"><td><strong>${depName}</strong></td><td></td><td style="text-align: right;">${absAmt}</td><td>Payout Transfer Offset</td></tr>`;
-                } else {
-                    html += `<tr style="background:#f8f9fa;"><td><strong>${depName}</strong></td><td style="text-align: right;">${absAmt}</td><td></td><td>Payout Transfer Offset</td></tr>`;
-                    html += `<tr><td>${catRef}</td><td></td><td style="text-align: right;">${absAmt}</td><td>${t.lineItem}</td></tr>`;
-                }
-            });
-
-            html += `</tbody></table></div>`;
-            document.getElementById('tabContent').innerHTML = html;
-
-        } else {
-            let summary = {};
-            let netDeposit = 0;
-
-            currentData.forEach(t => {
-                const amt = this.parseAmt(t.total);
-                const key = t.lineItem || "UNCATEGORIZED"; 
-                if (!summary[key]) summary[key] = { amt: 0, catName: t.category || `<span class="text-danger">Missing</span>` };
-                summary[key].amt += amt;
-                netDeposit += amt;
-            });
-
-            let summaryDateStr = this.endDate;
-            if (!summaryDateStr) {
-                const dates = currentData.map(t => new Date(t['date/time']).getTime()).filter(n => !isNaN(n));
-                if (dates.length > 0) {
-                    summaryDateStr = this.getAmazonDateStr(new Date(Math.max(...dates)).toISOString());
-                } else {
-                    summaryDateStr = "N/A";
-                }
-            } else {
-                summaryDateStr = this.getAmazonDateStr(this.endDate + "T00:00:00");
-            }
-
-            html += `
-                <h4 style="margin-top: 0; margin-bottom: 10px; color: #2c3e50;">Journal Entry Date: <span style="font-weight: normal;">${summaryDateStr}</span></h4>
-                <table><thead><tr>
-                    <th>Account / Category</th>
-                    <th style="text-align: right;">Debit</th>
-                    <th style="text-align: right;">Credit</th>
-                    <th>Line Description</th>
-                </tr></thead><tbody>
-            `;
-
-            let journalLines = [];
-            if (netDeposit > 0) {
-                journalLines.push({ catName: `<strong>${depName}</strong>`, debit: netDeposit, credit: 0, desc: `Total ${this.activeMainTab}`, isDeposit: true });
-            } else if (netDeposit < 0) {
-                journalLines.push({ catName: `<strong>${depName}</strong>`, debit: 0, credit: Math.abs(netDeposit), desc: `Total ${this.activeMainTab}`, isDeposit: true });
-            }
-
-            let totalDebit = netDeposit > 0 ? netDeposit : 0;
-            let totalCredit = netDeposit < 0 ? Math.abs(netDeposit) : 0;
-
-            Object.keys(summary).forEach(lineKey => {
-                const amt = summary[lineKey].amt;
-                if (amt < 0) {
-                    journalLines.push({ catName: summary[lineKey].catName, debit: Math.abs(amt), credit: 0, desc: lineKey, isDeposit: false });
-                    totalDebit += Math.abs(amt);
-                } else if (amt > 0) {
-                    journalLines.push({ catName: summary[lineKey].catName, debit: 0, credit: amt, desc: lineKey, isDeposit: false });
-                    totalCredit += amt;
-                }
-            });
-
-            journalLines.sort((a, b) => {
-                if (a.isDeposit && a.debit > 0) return -1;
-                if (b.isDeposit && b.debit > 0) return 1;
-                if (a.isDeposit && a.credit > 0) return 1;
-                if (b.isDeposit && b.credit > 0) return -1;
-                return a.debit > 0 ? -1 : 1; 
-            });
-
-            journalLines.forEach(line => {
-                const debitStr = line.debit > 0 ? line.debit.toFixed(2) : "";
-                const creditStr = line.credit > 0 ? line.credit.toFixed(2) : "";
-                html += `<tr><td>${line.catName}</td><td style="text-align: right;">${debitStr}</td><td style="text-align: right;">${creditStr}</td><td>${line.desc}</td></tr>`;
-            });
-
-            html += `<tr style="font-weight:bold; background:#e9ecef">
-                <td>TOTAL</td>
-                <td style="text-align: right;">${totalDebit.toFixed(2)}</td>
-                <td style="text-align: right;">${totalCredit.toFixed(2)}</td>
-                <td></td>
-            </tr>`;
-
-            html += `</tbody></table></div>`;
-            document.getElementById('tabContent').innerHTML = html;
-        }
-    }
-
     async loadBatchHistory() {
         const qboSelect = document.getElementById('qboSelect');
         if (!qboSelect || !qboSelect.value) return;
@@ -1383,7 +1174,6 @@ export default class Shopify {
         container.innerHTML = "<p>Loading history...</p>";
 
         try {
-            // Load history from COMPANY ROOT
             const snap = await getDocs(collection(db, `qbo_companies/${qboSelect.value}/transPushedToQB`));
             let batches = [];
             snap.forEach(doc => batches.push({ id: doc.id, ...doc.data() }));
