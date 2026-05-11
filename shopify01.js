@@ -1,5 +1,5 @@
 import { db, functions } from './auth.js'; 
-import { collection, doc, getDoc, setDoc, getDocs } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+import { collection, doc, getDoc, setDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-functions.js";
 import { getStorage, ref, uploadBytes } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-storage.js";
 import { currentUser } from './app.js';
@@ -59,8 +59,8 @@ export default class Shopify {
             </style>
             
             <div class="container" style="padding-top: 0.25rem;">
-                <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.4rem;">VilSync: Shopify Integrator</h2>
-                <p style="color: #666; font-size: 0.85rem; margin-top: 0;">Upload your <strong>orders_export.csv</strong> (for Sales Receipts) or <strong>payment_transactions_export.csv</strong> (for Payouts & Fees).</p>
+                <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.4rem;">VillSync to QBO: Shopify Integrator</h2>
+                <p style="color: #666; font-size: 0.85rem; margin-top: 0;">Upload your <strong>ORDERS_EXPORT.csv</strong> (for Sales Receipts) or <strong>PAYMENT_TRANSACTIONS_EXPORT.csv</strong> (for Payouts & Fees) exactly as downloaded, without any edits.</p>
                 <div id="alertBox" class="alert" style="margin-bottom: 0.25rem; padding: 0.4rem;"></div>
 
                 <div id="pushStatusBar" class="desktop-scroll-row" style="background: #f8f9fa; border: 1px solid #dee2e6; border-left: 4px solid #27ae60; padding: 0.4rem 1rem; margin-bottom: 0.25rem; border-radius: 4px; justify-content: space-between; align-items: center; font-size: 0.9rem; position: relative; overflow-y: hidden;">
@@ -98,7 +98,7 @@ export default class Shopify {
                 </div>
 
                 <div id="tabContent">
-                    <p style="padding: 2rem; text-align: center; color: #7f8c8d;">Awaiting Shopify Export CSV...</p>
+                    <p style="padding: 2rem; text-align: center; color: #7f8c8d;">Select a QBO Account and upload a Shopify Export CSV to begin.</p>
                 </div>
             </div>
             
@@ -117,6 +117,14 @@ export default class Shopify {
 
     async afterRender() {
         await this.checkUserRoleAndLimits();
+        
+        const qboSelect = document.getElementById('qboSelect');
+        if (qboSelect) {
+            qboSelect.addEventListener('change', async () => {
+                await this.loadCategories();
+                if (this.transactions.length > 0) this.renderActiveView();
+            });
+        }
         await this.loadCategories();
         
         document.getElementById('csvFile').addEventListener('change', e => this.handleFileSelect(e));
@@ -199,7 +207,7 @@ export default class Shopify {
                     ctrlPanel.style.display = 'flex';
                     subTabs.style.display = 'none';
                     statusBar.style.display = 'flex';
-                    payTabs.style.display = 'none'; // Unmapped ignores payment methods
+                    payTabs.style.display = 'none'; 
                 } else {
                     ctrlPanel.style.display = 'flex';
                     subTabs.style.display = 'flex';
@@ -243,7 +251,7 @@ export default class Shopify {
             mainHtml += `<button class="tab ${this.activeMainTab === 'deposits' ? 'active' : ''}" data-maintab="deposits">Deposits</button>`;
         }
         
-        mainHtml += `<button class="tab ${this.activeMainTab === 'unmapped' ? 'active' : ''}" data-maintab="unmapped" style="color: #e74c3c;">Unmapped</button>`;
+        mainHtml += `<button class="tab ${this.activeMainTab === 'unmapped' ? 'active' : ''}" data-maintab="unmapped" style="color: #e74c3c;">Mapping</button>`;
         mainContainer.innerHTML = mainHtml;
 
         this.attachPaymentTabListeners();
@@ -253,13 +261,14 @@ export default class Shopify {
     renderActiveView() {
         if (this.transactions.length === 0) return;
         this.updateReadyStatus();
-        if (this.activeMainTab === 'unmapped') return this.renderUnmappedTable();
+        if (this.activeMainTab === 'unmapped') return this.renderMappingTable();
         if (this.activeSubTab === 'table') return this.renderTable();
     }
 
     updateReadyStatus() {
         const statusText = document.getElementById('pushStatusText');
         const progressFill = document.getElementById('pushProgressFill');
+        const highVolumeBanner = document.getElementById('highVolumeBanner');
         const limitText = document.getElementById('limitText');
 
         if (!statusText) return;
@@ -280,14 +289,43 @@ export default class Shopify {
         statusText.style.textShadow = "none";
 
         if (this.activeMainTab === 'unmapped') {
-            const unmappedCount = new Set(this.transactions.filter(t => !t.category).map(t => t.lineItem)).size;
-            statusText.innerText = `${unmappedCount} unmapped items to resolve.`;
-            statusText.style.color = "#e74c3c";
+            const uniqueLines = new Set(this.transactions.map(t => t.lineItem)).size;
+            statusText.innerText = `Mapping Manager: Reviewing ${uniqueLines} unique line items from this upload.`;
+            statusText.style.color = "#2c3e50";
+            if (highVolumeBanner) highVolumeBanner.style.display = 'none';
             return;
         }
 
-        const currentData = this.getFilteredData();
-        statusText.innerText = `Status: ${currentData.length} lines ready in current view.`;
+        const currentData = this.getFilteredAndPartitionedData ? this.getFilteredAndPartitionedData() : this.getFilteredData();
+        const totalLines = currentData.length;
+        
+        let totalTxns = 0;
+        const typeNames = { 'sales': 'sales receipt', 'refunds': 'refund receipt', 'expenses': 'expense', 'deposits': 'deposit', 'payouts': 'payout' };
+        let typeName = typeNames[this.activeMainTab] || 'journal';
+
+        if (this.activeSubTab === 'journal') {
+            totalTxns = 1;
+            typeName = 'journal entry';
+        } else if (this.activeMainTab === 'payouts') {
+            totalTxns = totalLines;
+        } else if (this.activeMainTab !== 'all') {
+            const groups = new Set();
+            currentData.forEach(t => {
+                const oId = t['order id'] || t.uid;
+                const dateStamp = t['date/time'] || t.dateTime || 'nodate';
+                const settlementId = t['settlement id'] || t.settlementId || 'nosettlement';
+                groups.add(`${oId}_${dateStamp}_${settlementId}`);
+            });
+            totalTxns = groups.size;
+        }
+
+        if (this.activeMainTab === 'all') {
+            statusText.innerText = `Status: ${totalLines} raw lines currently filtered. Please select a specific tab to push.`;
+        } else {
+            statusText.innerText = `${totalLines} lines for ${totalTxns} ${typeName} transactions ready to push.`;
+        }
+        
+        if (highVolumeBanner) highVolumeBanner.style.display = totalLines > 500 ? 'block' : 'none';
     }
 
     updatePushProgress(linesPushed, txnsPushed, totalLines, totalTxns, typeName) {
@@ -329,10 +367,31 @@ export default class Shopify {
     }
 
     async loadCategories() {
-        const snap = await getDocs(collection(db, "category"));
-        snap.forEach(doc => { 
-            this.categoriesDict[doc.id] = { category: doc.data().category, accountType: doc.data().accountType || "" }; 
-        });
+        this.categoriesDict = {};
+        try {
+            const defaultSnap = await getDocs(collection(db, "category"));
+            defaultSnap.forEach(doc => { 
+                this.categoriesDict[doc.id] = { 
+                    category: doc.data().category, 
+                    accountType: doc.data().accountType || "",
+                    source: 'default'
+                }; 
+            });
+        } catch (e) {}
+
+        const qboSelect = document.getElementById('qboSelect');
+        if (qboSelect && qboSelect.value && currentUser) {
+            try {
+                const companySnap = await getDocs(collection(db, `qbo_companies/${qboSelect.value}/category_mappings`));
+                companySnap.forEach(doc => {
+                    this.categoriesDict[doc.id] = {
+                        category: doc.data().category,
+                        accountType: doc.data().accountType || "",
+                        source: 'company'
+                    };
+                });
+            } catch (e) {}
+        }
     }
 
     async updateCategory(lineItem, newCategory) {
@@ -359,6 +418,30 @@ export default class Shopify {
         const file = e.target.files[0];
         if (!file) return;
 
+        const qboSelect = document.getElementById('qboSelect');
+        if (!qboSelect || !qboSelect.value) {
+            this.showAlert("<strong>Action Required:</strong> Please connect and select a QBO account from the top right menu before uploading a file.", "danger");
+            e.target.value = "";
+            return;
+        }
+
+        if (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
+            this.showAlert("<strong>Format Error:</strong> You uploaded an Excel workbook (.xlsx). Please save it as a <strong>CSV</strong> file before uploading.", "danger");
+            e.target.value = "";
+            return;
+        }
+
+        const realmId = qboSelect.value;
+        const fileDocRef = doc(db, `qbo_companies/${realmId}/transactionFiles`, file.name);
+        try {
+            const fileDocSnap = await getDoc(fileDocRef);
+            if (fileDocSnap.exists()) {
+                const uploadDate = new Date(fileDocSnap.data().dateTimeUploaded).toLocaleDateString();
+                const proceed = confirm(`DUPLICATE WARNING: "${file.name}" was already uploaded to this QBO Company on ${uploadDate}.\n\nProcess again?`);
+                if (!proceed) { e.target.value = ""; return; }
+            }
+        } catch (err) {}
+
         Papa.parse(file, {
             header: true,
             skipEmptyLines: true,
@@ -367,9 +450,11 @@ export default class Shopify {
                 
                 if (headers.includes('Name') && headers.includes('Lineitem name') && headers.includes('Subtotal')) {
                     this.fileType = 'orders';
+                    await this.logFileRecord(file, realmId);
                     await this.parseOrdersExport(results.data);
                 } else if (headers.includes('Payout Date') || headers.includes('Fee') || headers.includes('Payout ID') || headers.includes('Payment Method Name')) {
                     this.fileType = 'payouts';
+                    await this.logFileRecord(file, realmId);
                     await this.parsePayoutsExport(results.data);
                 } else {
                     this.showAlert("<strong>Unrecognized File:</strong> Please ensure you upload the unmodified 'orders_export.csv' or 'payment_transactions_export.csv' from Shopify.", "danger");
@@ -377,6 +462,27 @@ export default class Shopify {
                 }
             }
         });
+    }
+
+    async logFileRecord(file, realmId) {
+        let status = "Local Render Only";
+        if (currentUser && db.app) {
+            try {
+                const storage = getStorage(db.app);
+                const fileRef = ref(storage, `qbo_companies/${realmId}/transactions/${file.name}`);
+                await uploadBytes(fileRef, file);
+                status = "Uploaded to Storage";
+            } catch (e) {
+                status = "Storage Failed - Bypass Used";
+            }
+        }
+        try {
+            await setDoc(doc(db, `qbo_companies/${realmId}/transactionFiles`, file.name), {
+                dateTimeUploaded: new Date().toISOString(),
+                uploadedBy: currentUser ? currentUser.email : "Guest",
+                storageStatus: status
+            });
+        } catch (e) {}
     }
 
     // --- PARSER 1: ORDERS EXPORT ---
@@ -412,7 +518,7 @@ export default class Shopify {
 
         for (const [orderId, order] of Object.entries(ordersGroup)) {
             let calculatedItemTotal = 0;
-            const pushType = 'sales'; // 1099-K compliance: all orders are sales receipts
+            const pushType = 'sales';
 
             // 1. Process Core Product Line Items
             order.lines.forEach(row => {
@@ -538,7 +644,6 @@ export default class Shopify {
             const computedAmount = calculatedItemTotal + order.shipping + order.duties - order.discount;
             let targetAmount = order.total;
 
-            // If Total includes taxes (computed + taxes = total), deduct taxes from target so formula balances strictly based on inputs
             if (Math.abs((computedAmount + order.taxes) - order.total) < 0.05) {
                 targetAmount = order.total - order.taxes;
             }
@@ -720,51 +825,66 @@ export default class Shopify {
         };
     }
 
-    renderUnmappedTable() {
-        const unmappedData = [];
+    renderMappingTable() {
+        const mappingData = [];
         const seen = new Set();
         
         this.transactions.forEach(t => {
-            if (!t.category && !seen.has(t.lineItem)) {
+            if (!seen.has(t.lineItem)) {
                 seen.add(t.lineItem);
-                unmappedData.push(t);
+                const dictEntry = this.categoriesDict[t.lineItem];
+                
+                // Prefill with whatever is available (Default or Company)
+                t.suggestedCategory = dictEntry ? dictEntry.category : '';
+                t.suggestedType = dictEntry ? dictEntry.accountType : 'Expense';
+                t.mappingSource = dictEntry ? dictEntry.source : 'unmapped';
+                
+                mappingData.push(t);
             }
         });
 
         let html = `
             <div style="margin-bottom: 10px;">
-                <span style="font-size:0.9rem; color:#666;">Showing ${unmappedData.length} unique unmapped line items.</span>
+                <span style="font-size:0.9rem; color:#666;">Showing all ${mappingData.length} unique line items in this file. Overrides are saved specifically to the active QBO Company.</span>
             </div>
             <div class="table-responsive">
             <table><thead><tr>
                 <th>Line Item</th>
-                <th>Category Name (QBO Account)</th>
+                <th>Company QBO Account Name</th>
                 <th>Account Type</th>
+                <th style="text-align:center;">Source</th>
                 <th>Description</th>
                 <th style="text-align:center;">Action</th>
             </tr></thead><tbody>
         `;
 
-        if (unmappedData.length === 0) {
-            html += `<tr><td colspan="5" style="text-align:center; padding: 2rem; color: #27ae60; font-weight: bold;">All line items are successfully mapped!</td></tr>`;
+        if (mappingData.length === 0) {
+            html += `<tr><td colspan="6" style="text-align:center; padding: 2rem; color: #666;">No line items found. Please upload a file.</td></tr>`;
         }
 
-        unmappedData.forEach((t, i) => {
+        mappingData.forEach((t, i) => {
+            // Beautiful colored badges to instantly see where the rule came from
+            let sourceBadge = t.mappingSource === 'default' ? `<span style="background:#e9ecef; padding:2px 6px; border-radius:4px; font-size:0.75rem; color:#8e44ad; font-weight:bold;">Global Default</span>` :
+                              t.mappingSource === 'company' ? `<span style="background:#e8f8f5; padding:2px 6px; border-radius:4px; font-size:0.75rem; color:#27ae60; font-weight:bold;">Company</span>` :
+                              `<span style="background:#fdedec; padding:2px 6px; border-radius:4px; font-size:0.75rem; color:#e74c3c; font-weight:bold;">Unmapped</span>`;
+
             html += `<tr>
                 <td><strong>${t.lineItem}</strong></td>
-                <td><input type="text" id="unmap-cat-${i}" placeholder="E.g., Shopify Sales, Gateway Fees..." style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
+                <td><input type="text" id="unmap-cat-${i}" value="${t.suggestedCategory}" placeholder="QBO Account Name" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
                 <td>
                     <select id="unmap-type-${i}" style="padding:0.4rem; width:100%; box-sizing: border-box;">
-                        <option value="Income">Income</option>
-                        <option value="Expense" selected>Expense</option>
-                        <option value="Bank">Bank / Clearing</option>
-                        <option value="OtherCurrentAsset">Other Current Asset</option>
-                        <option value="CostOfGoodsSold">Cost of Goods Sold</option>
+                        <option value="Income" ${t.suggestedType === 'Income' ? 'selected' : ''}>Income</option>
+                        <option value="Expense" ${t.suggestedType === 'Expense' ? 'selected' : ''}>Expense</option>
+                        <option value="Bank" ${t.suggestedType === 'Bank' ? 'selected' : ''}>Bank / Clearing</option>
+                        <option value="OtherCurrentAsset" ${t.suggestedType === 'OtherCurrentAsset' ? 'selected' : ''}>Other Current Asset</option>
+                        <option value="CostOfGoodsSold" ${t.suggestedType === 'CostOfGoodsSold' ? 'selected' : ''}>Cost of Goods Sold</option>
                     </select>
                 </td>
-                <td><input type="text" id="unmap-desc-${i}" placeholder="Optional internal description" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
-                <td style="text-align:center;">
-                    <button class="btn" style="background:#27ae60; color:white; font-weight:bold; padding:0.4rem 1rem;" onclick="window.pushAndSaveUnmapped('${t.lineItem}', ${i})">Push to QBO & Save</button>
+                <td style="text-align:center;">${sourceBadge}</td>
+                <td><input type="text" id="unmap-desc-${i}" placeholder="Optional notes" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
+                <td style="text-align:center; display:flex; gap:5px; justify-content:center;">
+                    <button class="btn" style="background:#27ae60; color:white; font-weight:bold; padding:0.4rem 0.8rem;" onclick="window.pushAndSaveMapping('${t.lineItem}', ${i}, '${t.suggestedCategory}')">Save</button>
+                    <button class="btn outline" style="padding:0.4rem 0.8rem;" onclick="window.viewMappingHistory('${t.lineItem}')">📜 History</button>
                 </td>
             </tr>`;
         });
@@ -772,7 +892,45 @@ export default class Shopify {
         html += `</tbody></table></div>`;
         document.getElementById('tabContent').innerHTML = html;
 
-        window.pushAndSaveUnmapped = async (lineItem, index) => {
+        window.viewMappingHistory = async (lineItem) => {
+            const qboSelect = document.getElementById('qboSelect');
+            if (!qboSelect || !qboSelect.value) return this.showAlert("Please connect a QBO account.", "warning");
+            const realmId = qboSelect.value;
+
+            document.getElementById('historyLineItemLabel').innerText = lineItem;
+            document.getElementById('mappingHistoryModal').style.display = 'flex';
+            const container = document.getElementById('mappingHistoryTableContainer');
+            container.innerHTML = '<p style="text-align:center; padding: 2rem;">Loading audit logs...</p>';
+
+            try {
+                const snap = await getDocs(collection(db, `qbo_companies/${realmId}/audit_logs`));
+                let logs = [];
+                snap.forEach(doc => {
+                    const data = doc.data();
+                    if (data.lineItem === lineItem) logs.push(data);
+                });
+                
+                logs.sort((a, b) => new Date(b.modifiedAt) - new Date(a.modifiedAt));
+
+                if (logs.length === 0) {
+                    container.innerHTML = '<p style="text-align:center; padding: 2rem; color: #666;">No company-specific mapping history found for this line item.</p>';
+                    return;
+                }
+
+                let logHtml = `<table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;"><thead style="background: #f8f9fa;"><tr><th style="padding: 10px; border-bottom: 2px solid #ddd;">Date</th><th style="padding: 10px; border-bottom: 2px solid #ddd;">Action</th><th style="padding: 10px; border-bottom: 2px solid #ddd;">Category Change</th><th style="padding: 10px; border-bottom: 2px solid #ddd;">User</th></tr></thead><tbody>`;
+
+                logs.forEach(log => {
+                    const dateStr = new Date(log.modifiedAt).toLocaleString();
+                    logHtml += `<tr><td style="padding: 10px; border-bottom: 1px solid #eee;">${dateStr}</td><td style="padding: 10px; border-bottom: 1px solid #eee; font-weight:bold; color: #8e44ad;">${log.action}</td><td style="padding: 10px; border-bottom: 1px solid #eee;"><span style="color:#e74c3c;">${log.oldCategory}</span> ➔ <strong style="color:#27ae60;">${log.newCategory}</strong></td><td style="padding: 10px; border-bottom: 1px solid #eee;">${log.modifiedBy}</td></tr>`;
+                });
+                logHtml += `</tbody></table>`;
+                container.innerHTML = logHtml;
+            } catch (error) {
+                container.innerHTML = '<p class="text-danger" style="text-align:center;">Failed to load history.</p>';
+            }
+        };
+
+        window.pushAndSaveMapping = async (lineItem, index, oldCat) => {
             const catVal = document.getElementById(`unmap-cat-${index}`).value.trim();
             const typeVal = document.getElementById(`unmap-type-${index}`).value;
             const descVal = document.getElementById(`unmap-desc-${index}`).value.trim();
@@ -789,29 +947,49 @@ export default class Shopify {
                 return;
             }
 
-            btn.innerText = "Pushing...";
+            btn.innerText = "Saving...";
             btn.disabled = true;
+            const realmId = qboSelect.value;
 
             try {
                 const getOrCreateQboAccount = httpsCallable(functions, 'getOrCreateQboAccount');
                 
                 await getOrCreateQboAccount({
                     accountName: catVal,
-                    realmId: qboSelect.value,
+                    realmId: realmId,
                     accountType: typeVal,
                     description: descVal
                 });
 
-                await setDoc(doc(db, "category", lineItem), {
-                    lineItem: lineItem,
-                    category: catVal,
-                    accountType: typeVal,
-                    description: descVal
+                const batch = writeBatch(db);
+                const ts = new Date().toISOString();
+                
+                const mapRef = doc(db, `qbo_companies/${realmId}/category_mappings`, lineItem);
+                batch.set(mapRef, { 
+                    lineItem: lineItem, 
+                    category: catVal, 
+                    accountType: typeVal, 
+                    description: descVal, 
+                    modifiedBy: currentUser.email, 
+                    modifiedAt: ts 
                 }, { merge: true });
+
+                const logRef = doc(collection(db, `qbo_companies/${realmId}/audit_logs`));
+                batch.set(logRef, { 
+                    action: oldCat ? "UPDATE" : "CREATE", 
+                    lineItem: lineItem, 
+                    oldCategory: oldCat || "UNMAPPED", 
+                    newCategory: catVal, 
+                    modifiedBy: currentUser.email, 
+                    modifiedAt: ts 
+                });
+
+                await batch.commit();
 
                 if (!this.categoriesDict[lineItem]) this.categoriesDict[lineItem] = {};
                 this.categoriesDict[lineItem].category = catVal;
                 this.categoriesDict[lineItem].accountType = typeVal;
+                this.categoriesDict[lineItem].source = 'company';
                 
                 this.transactions.forEach(t => {
                     if (t.lineItem === lineItem) t.category = catVal;
@@ -822,7 +1000,7 @@ export default class Shopify {
 
             } catch (err) {
                 this.showAlert(err.message, "danger");
-                btn.innerText = "Push to QBO & Save";
+                btn.innerText = "Save";
                 btn.disabled = false;
             }
         };
@@ -854,7 +1032,11 @@ export default class Shopify {
         }
 
         let wakeLock = null;
-        try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
+        try {
+            if ('wakeLock' in navigator) {
+                wakeLock = await navigator.wakeLock.request('screen');
+            }
+        } catch (err) {}
 
         try {
             const config = {
@@ -887,12 +1069,13 @@ export default class Shopify {
             }
 
             if (pushedIds && pushedIds.length > 0) {
-                await setDoc(doc(db, "users", currentUser.uid, "transPushedToQB", config.batchId), {
+                await setDoc(doc(db, `qbo_companies/${config.realmId}/transPushedToQB`, config.batchId), {
                     timestamp: new Date().toISOString(),
                     realmId: config.realmId,
                     tab: this.activeMainTab,
                     view: this.activeSubTab,
-                    qboIds: pushedIds
+                    qboIds: pushedIds,
+                    pushedBy: currentUser.email
                 });
 
                 if (this.userRole === 'guest') {
@@ -903,7 +1086,9 @@ export default class Shopify {
                     this.updateReadyStatus(); 
                 }
                 
-                if (statusText) statusText.innerText = `Push completed successfully! ${pushedIds.length} transactions saved to QBO.`;
+                if (statusText) {
+                    statusText.innerText = `Push completed successfully! ${pushedIds.length} transactions saved to QBO.`;
+                }
             } else {
                 if (statusText) {
                     statusText.innerText = `All selected transactions were identified as duplicates and skipped.`;
@@ -929,11 +1114,13 @@ export default class Shopify {
     }
 
     async loadBatchHistory() {
+        const qboSelect = document.getElementById('qboSelect');
+        if (!qboSelect || !qboSelect.value) return;
         const container = document.getElementById('historyTableContainer');
         container.innerHTML = "<p>Loading history...</p>";
 
         try {
-            const snap = await getDocs(collection(db, "users", currentUser.uid, "transPushedToQB"));
+            const snap = await getDocs(collection(db, `qbo_companies/${qboSelect.value}/transPushedToQB`));
             let batches = [];
             snap.forEach(doc => batches.push({ id: doc.id, ...doc.data() }));
             batches.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -959,11 +1146,12 @@ export default class Shopify {
             batches.forEach(b => {
                 const dateStr = new Date(b.timestamp).toLocaleString();
                 const itemCount = b.qboIds ? b.qboIds.length : 0;
+                
                 html += `
                     <tr>
                         <td style="padding: 10px; border-bottom: 1px solid #eee;">
                             <strong>${dateStr}</strong><br>
-                            <span style="font-size:0.75rem; color:#888;">${b.id}</span>
+                            <span style="font-size:0.75rem; color:#888;">${b.id} | by ${b.pushedBy || 'Unknown'}</span>
                         </td>
                         <td style="padding: 10px; border-bottom: 1px solid #eee; text-transform: capitalize;">
                             ${b.tab} <span style="color:#aaa;">(${b.view})</span>
