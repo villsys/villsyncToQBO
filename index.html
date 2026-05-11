@@ -8,7 +8,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
         /* Quick layout styles for the new sidebar */
-        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; margin: 0; }
         .navbar { flex-shrink: 0; z-index: 10; }
         .app-body { display: flex; flex: 1; overflow: hidden; position: relative; }
         .sidebar { width: 250px; background: #2c3e50; color: white; display: flex; flex-direction: column; padding-top: 1rem; overflow-y: auto; transition: transform 0.3s ease, width 0.3s ease; }
@@ -27,6 +27,12 @@
             #app-root { padding: 0.25rem; }
         }
     </style>
+
+    <script>
+        if (!window.location.hash || window.location.hash === '#/') {
+            window.location.hash = '#/home';
+        }
+    </script>
 </head>
 <body>
     <header class="navbar">
@@ -56,6 +62,9 @@
             <a href="#/creditcard" class="sidebar-link" data-route="#/creditcard">Credit Cards</a>
             <a href="#/paypal" class="sidebar-link" data-route="#/paypal">PayPal</a>
                         
+            <div style="margin-top: auto; padding: 2rem 1.5rem 1rem 1.5rem; font-size: 0.75rem; color: #6c757d; text-align: center; white-space: normal; line-height: 1.4;">
+                &copy; 2025 Joselito Villarta, CPA, MBA.<br>All rights reserved.
+            </div>
         </aside>
 
         <main id="app-root">
