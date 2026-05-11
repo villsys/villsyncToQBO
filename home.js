@@ -1,4 +1,3 @@
-// home.js
 import { db } from './auth.js'; 
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 import { currentUser } from './app.js';
@@ -7,7 +6,7 @@ export default class Home {
     constructor() {
         this.userRole = 'guest'; 
         this.adminDataCache = {}; 
-        this.adminTools = []; // Stores the specific tools the active user has admin rights to
+        this.adminTools = []; 
     }
 
     async render() {
@@ -23,7 +22,7 @@ export default class Home {
                 .tool-card { background: #fff; border: 1px solid #dee2e6; border-radius: 8px; width: 280px; min-height: 160px; padding: 1.5rem; box-shadow: 0 4px 10px rgba(0,0,0,0.05); transition: transform 0.2s, box-shadow 0.2s; display: flex; flex-direction: column; text-decoration: none; color: inherit; }
                 .tool-card:hover { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.1); border-color: #3498db; }
                 .tool-card h3 { color: #2c3e50; margin-top: 0; margin-bottom: 0.5rem; font-size: 1.2rem; border-bottom: 2px solid #f8f9fa; padding-bottom: 0.5rem; }
-                .tool-card .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: bold; margin-bottom: 10px; }
+                .tool-card .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: bold; margin-bottom: 10px; margin-right: 5px; }
                 .badge-free { background: #e8f8f5; color: #27ae60; }
                 .badge-pro { background: #fdf2e9; color: #e67e22; }
                 .tool-card p { font-size: 0.85rem; color: #555; flex-grow: 1; margin-bottom: 1rem; line-height: 1.4; }
@@ -42,7 +41,7 @@ export default class Home {
 
             <div class="hub-container">
                 <div class="hub-header">
-                    <h1>Welcome to VilSync</h1>
+                    <h1>Welcome to VilBooks</h1>
                     <p>Select an integration tool below to manage your QuickBooks Online data.</p>
                 </div>
 
@@ -86,10 +85,8 @@ export default class Home {
     async afterRender() {
         if (!currentUser) return;
         
-        // Check permissions immediately to render the correct cards
         await this.checkUserRoleAndLimits();
 
-        // Super Admin verification logic
         if (this.userRole === 'super_admin') {
             document.getElementById('superAdminPanel').style.display = 'block';
             await this.loadAdminList();
@@ -159,13 +156,10 @@ export default class Home {
         this.userRole = 'guest'; 
         this.adminTools = [];
         
-        // 1. Check for Master Super Admin
         if (currentUser.email === 'vnvcpas.excelimporter@gmail.com') {
             this.userRole = 'super_admin';
-            // Super Admin automatically gets access to everything
             this.adminTools = ['amazon', 'shopify', 'productCost', 'bulkDelete'];
         } else {
-            // 2. Check for Tool-Specific Admins
             try {
                 const adminDoc = await getDoc(doc(db, "global_config", "admins"));
                 if (adminDoc.exists()) {
@@ -178,7 +172,6 @@ export default class Home {
             } catch (e) {}
         }
         
-        // Generate the dynamic cards based on the fetched permissions
         this.renderCards();
     }
 
@@ -216,8 +209,11 @@ export default class Home {
 
             <a href="#/productCostBuilder" class="tool-card">
                 <h3>Product Cost Builder</h3>
-                <div><span class="badge badge-free">Utility</span></div>
-                <p>Build Bill of Materials (BOM), calculate landed costs, and estimate wholesale pricing.</p>
+                <div>
+                    <span class="badge badge-free">Utility</span>
+                    <span class="badge badge-pro">Data Push Module</span>
+                </div>
+                <p>Build Bill of Materials (BOM), calculate landed costs, estimate wholesale pricing, and push journal entries to build materials, labor, and overhead into finished goods inventory.</p>
                 <div class="guest-limits" style="border-left-color: ${isProductCostAdmin ? '#27ae60' : '#bdc3c7'}; background: ${isProductCostAdmin ? '#e8f8f5' : '#f8f9fa'};">
                     ${isProductCostAdmin 
                         ? `<strong style="color:#27ae60;">Admin Access:</strong> Has full calculation access and unlimited Journal/Adjustment pushes directly to QBO.` 
