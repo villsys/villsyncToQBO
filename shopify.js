@@ -1,3 +1,4 @@
+// shopify.js
 import { db, functions } from './auth.js'; 
 import { collection, doc, getDoc, setDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-functions.js";
@@ -17,6 +18,10 @@ export default class Shopify {
         this.paymentMethods = new Set();
         this.fileType = null; // 'orders' or 'payouts'
         
+        // Live QBO Data
+        this.qboAccounts = [];
+        this.qboItems = [];
+
         this.depositAccount = "Shopify Clearing"; 
         this.startDate = "";
         this.endDate = "";
@@ -56,6 +61,7 @@ export default class Shopify {
                 .desktop-scroll-row::-webkit-scrollbar { height: 6px; }
                 .desktop-scroll-row::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
                 .desktop-scroll-row::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+                .qbo-badge { background: #e8f8f5; color: #27ae60; font-size: 0.7rem; padding: 2px 5px; border-radius: 3px; font-weight: bold; margin-left: 5px; white-space: nowrap; }
             </style>
             
             <div class="container" style="padding-top: 0.25rem;">
@@ -121,10 +127,13 @@ export default class Shopify {
         const qboSelect = document.getElementById('qboSelect');
         if (qboSelect) {
             qboSelect.addEventListener('change', async () => {
+                await this.loadLiveQboData();
                 await this.loadCategories();
                 if (this.transactions.length > 0) this.renderActiveView();
             });
         }
+        
+        await this.loadLiveQboData();
         await this.loadCategories();
         
         document.getElementById('csvFile').addEventListener('change', e => this.handleFileSelect(e));
@@ -178,6 +187,24 @@ export default class Shopify {
             }
         }
         this.updateReadyStatus();
+    }
+
+    // THE LIVE DATA FETCHER
+    async loadLiveQboData() {
+        this.qboAccounts = [];
+        this.qboItems = [];
+        
+        const qboSelect = document.getElementById('qboSelect');
+        if (!qboSelect || !qboSelect.value || !currentUser) return;
+
+        try {
+            const fetchQboLists = httpsCallable(functions, 'fetchQboLists');
+            const res = await fetchQboLists({ realmId: qboSelect.value });
+            this.qboAccounts = res.data.accounts || [];
+            this.qboItems = res.data.items || [];
+        } catch (e) {
+            console.error("Failed to load live QBO data", e);
+        }
     }
 
     attachPaymentTabListeners() {
@@ -778,7 +805,12 @@ export default class Shopify {
 
         currentData.forEach((t) => {
             let catDisplay = t.category;
-            if (!t.category) {
+            // Map table category from live data if possible
+            const liveMatch = this.qboAccounts.find(a => a.name.toLowerCase() === t.lineItem.toLowerCase());
+            if (liveMatch && !t.category) {
+                catDisplay = liveMatch.name;
+                t.category = liveMatch.name;
+            } else if (!t.category) {
                 catDisplay = `<input type="text" class="cat-input" placeholder="Add Category..." onblur="window.updateCat('${t.lineItem}', this.value)"><span class="text-danger"> Missing</span>`;
             }
 
@@ -826,182 +858,172 @@ export default class Shopify {
     }
 
     renderMappingTable() {
-        const mappingData = [];
-        const seen = new Set();
-        
-        this.transactions.forEach(t => {
-            if (!seen.has(t.lineItem)) {
-                seen.add(t.lineItem);
-                const dictEntry = this.categoriesDict[t.lineItem];
-                
-                // Prefill with whatever is available (Default or Company)
-                t.suggestedCategory = dictEntry ? dictEntry.category : '';
-                t.suggestedType = dictEntry ? dictEntry.accountType : 'Expense';
-                t.mappingSource = dictEntry ? dictEntry.source : 'unmapped';
-                
-                mappingData.push(t);
-            }
-        });
+        const fullAccountTypes = [
+            "Bank", "Accounts Receivable", "Other Current Asset", "Fixed Asset", "Other Asset", 
+            "Accounts Payable", "Credit Card", "Other Current Liability", "Long Term Liability", 
+            "Equity", "Income", "Other Income", "Cost of Goods Sold", "Expense", "Other Expense"
+        ];
+
+        const uniqueLineItems = new Set(this.transactions.map(t => t.lineItem));
 
         let html = `
             <div style="margin-bottom: 10px;">
-                <span style="font-size:0.9rem; color:#666;">Showing all ${mappingData.length} unique line items in this file. Overrides are saved specifically to the active QBO Company.</span>
+                <span style="font-size:0.9rem; color:#666;">Showing all ${uniqueLineItems.size} unique line items required for this upload. Data is fetched directly from QBO.</span>
             </div>
             <div class="table-responsive">
-            <table><thead><tr>
-                <th>Line Item</th>
-                <th>Company QBO Account Name</th>
-                <th>Account Type</th>
-                <th style="text-align:center;">Source</th>
-                <th>Description</th>
-                <th style="text-align:center;">Action</th>
+            <table class="costing-table data-table" style="width:100% !important; min-width: 1000px !important;"><thead><tr>
+                <th style="text-align:left; width:20%;">Line Item</th>
+                <th style="text-align:left; width:15%;">Item Type</th>
+                <th style="text-align:left; width:25%;">Target QBO Account</th>
+                <th style="text-align:left; width:20%;">Account Type</th>
+                <th style="text-align:center; width:10%;">Status</th>
+                <th style="text-align:center; width:10%;">Action</th>
             </tr></thead><tbody>
         `;
 
-        if (mappingData.length === 0) {
-            html += `<tr><td colspan="6" style="text-align:center; padding: 2rem; color: #666;">No line items found. Please upload a file.</td></tr>`;
+        if (uniqueLineItems.size === 0) {
+            html += `<tr><td colspan="6" style="text-align:center; padding: 2rem; color: #666;">No line items found. Upload a CSV.</td></tr>`;
         }
 
-        mappingData.forEach((t, i) => {
-            // Beautiful colored badges to instantly see where the rule came from
-            let sourceBadge = t.mappingSource === 'default' ? `<span style="background:#e9ecef; padding:2px 6px; border-radius:4px; font-size:0.75rem; color:#8e44ad; font-weight:bold;">Global Default</span>` :
-                              t.mappingSource === 'company' ? `<span style="background:#e8f8f5; padding:2px 6px; border-radius:4px; font-size:0.75rem; color:#27ae60; font-weight:bold;">Company</span>` :
-                              `<span style="background:#fdedec; padding:2px 6px; border-radius:4px; font-size:0.75rem; color:#e74c3c; font-weight:bold;">Unmapped</span>`;
+        const isGuest = this.userRole === 'guest';
+        let i = 0;
+
+        uniqueLineItems.forEach(lineItem => {
+            const itemMatch = this.qboItems.find(item => item.name.toLowerCase() === lineItem.toLowerCase());
+            const accMatch = this.qboAccounts.find(acc => acc.name.toLowerCase() === lineItem.toLowerCase());
+
+            const itemInQbo = !!itemMatch;
+            const accInQbo = !!accMatch;
+            const isFullyMapped = itemInQbo && accInQbo;
+
+            let accDropdownHtml = `<select id="unmap-cat-${i}" style="padding:0.4rem; width:100%; box-sizing: border-box;" onchange="window.toggleNewAccountInput(${i}, this.value)">`;
+            accDropdownHtml += `<option value="">Select Existing QBO Account...</option>`;
+            accDropdownHtml += `<option value="ADD_NEW" style="font-weight:bold; color:var(--btn-bg);">+ Create New Account</option>`;
+            this.qboAccounts.forEach(acc => {
+                const selected = accInQbo && acc.id === accMatch.id ? 'selected' : '';
+                accDropdownHtml += `<option value="${acc.id}" data-name="${acc.name}" data-type="${acc.type}" ${selected}>${acc.name} (${acc.type})</option>`;
+            });
+            accDropdownHtml += `</select>`;
+            accDropdownHtml += `<input type="text" id="new-cat-name-${i}" placeholder="Enter new account name" style="display:none; margin-top:5px; padding:0.4rem; width:100%; box-sizing: border-box;" value="${lineItem}">`;
+
+            // Default Type Logic
+            let typeDropdownHtml = `<select id="unmap-type-${i}" style="padding:0.4rem; width:100%; box-sizing: border-box;" ${accInQbo ? 'disabled' : ''}>`;
+            let defaultType = (lineItem.includes('Price') || lineItem.includes('Shipping')) ? 'Income' : 'Expense';
+            fullAccountTypes.forEach(t => {
+                const selected = accMatch && accMatch.type === t ? 'selected' : (t === defaultType ? 'selected' : '');
+                typeDropdownHtml += `<option value="${t}" ${selected}>${t}</option>`;
+            });
+            typeDropdownHtml += `</select>`;
+
+            let defaultItemType = (lineItem.includes('Price')) ? 'NonInventory' : 'Service';
+            if (itemMatch) defaultItemType = itemMatch.type;
+            
+            let statusHtml = '';
+            if (itemInQbo) statusHtml += `<div class="qbo-badge">✅ Item in QBO</div>`;
+            if (accInQbo) statusHtml += `<div class="qbo-badge" style="margin-top:3px;">✅ Account in QBO</div>`;
+            if (!itemInQbo && !accInQbo) statusHtml = `<span style="color:#e74c3c; font-size:0.8rem;">Unmapped</span>`;
+
+            const isDisabled = isFullyMapped || isGuest;
 
             html += `<tr>
-                <td><strong>${t.lineItem}</strong></td>
-                <td><input type="text" id="unmap-cat-${i}" value="${t.suggestedCategory}" placeholder="QBO Account Name" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
+                <td style="white-space:normal; word-wrap: break-word;"><strong>${lineItem}</strong></td>
                 <td>
-                    <select id="unmap-type-${i}" style="padding:0.4rem; width:100%; box-sizing: border-box;">
-                        <option value="Income" ${t.suggestedType === 'Income' ? 'selected' : ''}>Income</option>
-                        <option value="Expense" ${t.suggestedType === 'Expense' ? 'selected' : ''}>Expense</option>
-                        <option value="Bank" ${t.suggestedType === 'Bank' ? 'selected' : ''}>Bank / Clearing</option>
-                        <option value="OtherCurrentAsset" ${t.suggestedType === 'OtherCurrentAsset' ? 'selected' : ''}>Other Current Asset</option>
-                        <option value="CostOfGoodsSold" ${t.suggestedType === 'CostOfGoodsSold' ? 'selected' : ''}>Cost of Goods Sold</option>
+                    <select id="item-type-${i}" style="padding:0.4rem; width:100%; box-sizing: border-box;" ${itemInQbo ? 'disabled' : ''}>
+                        <option value="NonInventory" ${defaultItemType === 'NonInventory' ? 'selected' : ''}>Non-Inventory</option>
+                        <option value="Service" ${defaultItemType === 'Service' ? 'selected' : ''}>Service</option>
+                        <option value="Inventory" ${defaultItemType === 'Inventory' ? 'selected' : ''}>Inventory</option>
+                        <option value="Bundle" ${defaultItemType === 'Bundle' ? 'selected' : ''}>Bundle</option>
                     </select>
                 </td>
-                <td style="text-align:center;">${sourceBadge}</td>
-                <td><input type="text" id="unmap-desc-${i}" placeholder="Optional notes" style="padding:0.4rem; width:100%; box-sizing: border-box;"></td>
+                <td>${accDropdownHtml}</td>
+                <td>${typeDropdownHtml}</td>
+                <td style="text-align:center;">${statusHtml}</td>
                 <td style="text-align:center; display:flex; gap:5px; justify-content:center;">
-                    <button class="btn" style="background:#27ae60; color:white; font-weight:bold; padding:0.4rem 0.8rem;" onclick="window.pushAndSaveMapping('${t.lineItem}', ${i}, '${t.suggestedCategory}')">Save</button>
-                    <button class="btn outline" style="padding:0.4rem 0.8rem;" onclick="window.viewMappingHistory('${t.lineItem}')">📜 History</button>
+                    <button class="btn" style="background:${isDisabled ? '#95a5a6' : '#27ae60'}; color:white; font-weight:bold; padding:0.4rem 0.8rem; border-radius:3px; border:none; cursor:${isDisabled ? 'not-allowed' : 'pointer'};" onclick="window.pushToQboMapping('${lineItem}', ${i})" ${isDisabled ? 'disabled' : ''} title="${isGuest ? 'Available to Admins only' : ''}">Save to QBO</button>
                 </td>
             </tr>`;
+            i++;
         });
 
         html += `</tbody></table></div>`;
         document.getElementById('tabContent').innerHTML = html;
 
-        window.viewMappingHistory = async (lineItem) => {
-            const qboSelect = document.getElementById('qboSelect');
-            if (!qboSelect || !qboSelect.value) return this.showAlert("Please connect a QBO account.", "warning");
-            const realmId = qboSelect.value;
-
-            document.getElementById('historyLineItemLabel').innerText = lineItem;
-            document.getElementById('mappingHistoryModal').style.display = 'flex';
-            const container = document.getElementById('mappingHistoryTableContainer');
-            container.innerHTML = '<p style="text-align:center; padding: 2rem;">Loading audit logs...</p>';
-
-            try {
-                const snap = await getDocs(collection(db, `qbo_companies/${realmId}/audit_logs`));
-                let logs = [];
-                snap.forEach(doc => {
-                    const data = doc.data();
-                    if (data.lineItem === lineItem) logs.push(data);
-                });
+        window.toggleNewAccountInput = (index, val) => {
+            const input = document.getElementById(`new-cat-name-${index}`);
+            const typeDropdown = document.getElementById(`unmap-type-${index}`);
+            if (val === 'ADD_NEW') {
+                input.style.display = 'block';
+                typeDropdown.disabled = false;
+            } else {
+                input.style.display = 'none';
+                typeDropdown.disabled = val !== '';
                 
-                logs.sort((a, b) => new Date(b.modifiedAt) - new Date(a.modifiedAt));
-
-                if (logs.length === 0) {
-                    container.innerHTML = '<p style="text-align:center; padding: 2rem; color: #666;">No company-specific mapping history found for this line item.</p>';
-                    return;
+                if (val !== '') {
+                    const sel = document.getElementById(`unmap-cat-${index}`);
+                    const selectedType = sel.options[sel.selectedIndex].dataset.type;
+                    if (selectedType) typeDropdown.value = selectedType;
                 }
-
-                let logHtml = `<table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;"><thead style="background: #f8f9fa;"><tr><th style="padding: 10px; border-bottom: 2px solid #ddd;">Date</th><th style="padding: 10px; border-bottom: 2px solid #ddd;">Action</th><th style="padding: 10px; border-bottom: 2px solid #ddd;">Category Change</th><th style="padding: 10px; border-bottom: 2px solid #ddd;">User</th></tr></thead><tbody>`;
-
-                logs.forEach(log => {
-                    const dateStr = new Date(log.modifiedAt).toLocaleString();
-                    logHtml += `<tr><td style="padding: 10px; border-bottom: 1px solid #eee;">${dateStr}</td><td style="padding: 10px; border-bottom: 1px solid #eee; font-weight:bold; color: #8e44ad;">${log.action}</td><td style="padding: 10px; border-bottom: 1px solid #eee;"><span style="color:#e74c3c;">${log.oldCategory}</span> ➔ <strong style="color:#27ae60;">${log.newCategory}</strong></td><td style="padding: 10px; border-bottom: 1px solid #eee;">${log.modifiedBy}</td></tr>`;
-                });
-                logHtml += `</tbody></table>`;
-                container.innerHTML = logHtml;
-            } catch (error) {
-                container.innerHTML = '<p class="text-danger" style="text-align:center;">Failed to load history.</p>';
             }
         };
 
-        window.pushAndSaveMapping = async (lineItem, index, oldCat) => {
-            const catVal = document.getElementById(`unmap-cat-${index}`).value.trim();
-            const typeVal = document.getElementById(`unmap-type-${index}`).value;
-            const descVal = document.getElementById(`unmap-desc-${index}`).value.trim();
+        window.pushToQboMapping = async (lineItem, index) => {
+            const itemTypeVal = document.getElementById(`item-type-${index}`).value;
+            const accSelect = document.getElementById(`unmap-cat-${index}`);
+            const accDropdownVal = accSelect.value;
+            const newAccName = document.getElementById(`new-cat-name-${index}`).value.trim();
+            const accTypeVal = document.getElementById(`unmap-type-${index}`).value;
             const btn = event.target;
 
-            if (!catVal) { 
-                this.showAlert("Please enter a Category Name (QBO Account Name).", "danger"); 
-                return; 
-            }
-            
             const qboSelect = document.getElementById('qboSelect');
-            if (!qboSelect || !qboSelect.value) {
-                this.showAlert("Please connect and select a QBO account from the top menu first.", "warning");
-                return;
+            if (!qboSelect || !qboSelect.value) return this.showAlert("Please connect a QBO account first.", "warning");
+
+            let targetAccountId = accDropdownVal;
+            let finalAccName = "";
+
+            if (accDropdownVal === 'ADD_NEW') {
+                if (!newAccName) return this.showAlert("Please enter a name for the new account.", "danger");
+                finalAccName = newAccName;
+            } else if (accDropdownVal === '') {
+                return this.showAlert("Please select an existing account or choose Add New.", "danger");
+            } else {
+                finalAccName = accSelect.options[accSelect.selectedIndex].dataset.name;
             }
 
-            btn.innerText = "Saving...";
-            btn.disabled = true;
+            btn.innerText = "Syncing..."; btn.disabled = true;
             const realmId = qboSelect.value;
 
             try {
-                const getOrCreateQboAccount = httpsCallable(functions, 'getOrCreateQboAccount');
+                if (accDropdownVal === 'ADD_NEW') {
+                    const getOrCreateQboAccount = httpsCallable(functions, 'getOrCreateQboAccount');
+                    const accRes = await getOrCreateQboAccount({ 
+                        accountName: finalAccName, 
+                        realmId: realmId, 
+                        accountType: accTypeVal 
+                    });
+                    targetAccountId = accRes.data.id;
+                }
+
+                const itemMatch = this.qboItems.find(item => item.name.toLowerCase() === lineItem.toLowerCase());
+                if (!itemMatch) {
+                    const createQboItem = httpsCallable(functions, 'createQboItem');
+                    await createQboItem({
+                        realmId: realmId,
+                        itemName: lineItem,
+                        itemType: itemTypeVal,
+                        accountId: targetAccountId,
+                        isIncome: (accTypeVal === 'Income' || accTypeVal === 'Other Income')
+                    });
+                }
+
+                this.showAlert(`Successfully synced "${lineItem}" with QuickBooks!`, "success");
                 
-                await getOrCreateQboAccount({
-                    accountName: catVal,
-                    realmId: realmId,
-                    accountType: typeVal,
-                    description: descVal
-                });
-
-                const batch = writeBatch(db);
-                const ts = new Date().toISOString();
-                
-                const mapRef = doc(db, `qbo_companies/${realmId}/category_mappings`, lineItem);
-                batch.set(mapRef, { 
-                    lineItem: lineItem, 
-                    category: catVal, 
-                    accountType: typeVal, 
-                    description: descVal, 
-                    modifiedBy: currentUser.email, 
-                    modifiedAt: ts 
-                }, { merge: true });
-
-                const logRef = doc(collection(db, `qbo_companies/${realmId}/audit_logs`));
-                batch.set(logRef, { 
-                    action: oldCat ? "UPDATE" : "CREATE", 
-                    lineItem: lineItem, 
-                    oldCategory: oldCat || "UNMAPPED", 
-                    newCategory: catVal, 
-                    modifiedBy: currentUser.email, 
-                    modifiedAt: ts 
-                });
-
-                await batch.commit();
-
-                if (!this.categoriesDict[lineItem]) this.categoriesDict[lineItem] = {};
-                this.categoriesDict[lineItem].category = catVal;
-                this.categoriesDict[lineItem].accountType = typeVal;
-                this.categoriesDict[lineItem].source = 'company';
-                
-                this.transactions.forEach(t => {
-                    if (t.lineItem === lineItem) t.category = catVal;
-                });
-
-                this.showAlert(`Successfully created "${catVal}" as ${typeVal} in QBO and mapped it!`, "success");
+                await this.loadLiveQboData();
                 this.renderActiveView(); 
 
             } catch (err) {
                 this.showAlert(err.message, "danger");
-                btn.innerText = "Save";
-                btn.disabled = false;
+                btn.innerText = "Save to QBO"; 
+                btn.disabled = (this.userRole === 'guest');
             }
         };
     }
