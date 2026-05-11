@@ -82,6 +82,17 @@ export default class BulkDeleteTransaction {
                         </div>
                     </div>
 
+                    <div id="quickSelectBar" style="display: none; margin-bottom: 10px; align-items: center; gap: 10px; flex-wrap: wrap;">
+                        <span style="font-size:0.9rem; font-weight:bold; color:#2c3e50;">Quick Select:</span>
+                        <button class="btn outline" style="padding:4px 8px; font-size:0.8rem; background:white; border:1px solid #ccc; color:#2c3e50; border-radius:3px; cursor:pointer;" onclick="window.selectTopN(50)">Top 50</button>
+                        <button class="btn outline" style="padding:4px 8px; font-size:0.8rem; background:white; border:1px solid #ccc; color:#2c3e50; border-radius:3px; cursor:pointer;" onclick="window.selectTopN(100)">Top 100</button>
+                        <button class="btn outline" style="padding:4px 8px; font-size:0.8rem; background:white; border:1px solid #ccc; color:#2c3e50; border-radius:3px; cursor:pointer;" onclick="window.selectTopN(150)">Top 150</button>
+                        <button class="btn outline" style="padding:4px 8px; font-size:0.8rem; background:white; border:1px solid #ccc; color:#2c3e50; border-radius:3px; cursor:pointer;" onclick="window.selectTopN(200)">Top 200</button>
+                        <button class="btn outline" style="padding:4px 8px; font-size:0.8rem; background:white; border:1px solid #ccc; color:#2c3e50; border-radius:3px; cursor:pointer;" onclick="window.selectTopN('ALL')">Select All</button>
+                        <button class="btn outline" style="padding:4px 8px; font-size:0.8rem; background:white; border:1px solid #ccc; color:#2c3e50; border-radius:3px; cursor:pointer;" onclick="window.selectTopN(0)">Clear Selection</button>
+                        <span id="rowCountDisplay" style="margin-left: auto; font-size:0.9rem; color:#666; font-weight:bold;"></span>
+                    </div>
+
                     <div class="table-responsive">
                         <table class="data-table" id="txnTable">
                             <thead>
@@ -187,7 +198,6 @@ export default class BulkDeleteTransaction {
             this.renderTable();
             this.showAlert(`Successfully loaded ${this.transactions.length} transactions.`, "success");
             
-            // Hide alert automatically after success
             setTimeout(() => { document.getElementById('alertBox').style.display = 'none'; }, 3000);
 
         } catch (error) {
@@ -199,13 +209,20 @@ export default class BulkDeleteTransaction {
 
     renderTable() {
         const tbody = document.getElementById('txnBody');
+        const quickSelectBar = document.getElementById('quickSelectBar');
+        const rowCountDisplay = document.getElementById('rowCountDisplay');
+        
         document.getElementById('selectAllCb').checked = false;
         this.updateDeleteButton();
 
         if (this.transactions.length === 0) {
             tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 2rem; color: #666;">No transactions found for the selected dates.</td></tr>`;
+            quickSelectBar.style.display = 'none';
             return;
         }
+
+        quickSelectBar.style.display = 'flex';
+        rowCountDisplay.innerText = `Total Extracted: ${this.transactions.length} rows`;
 
         let html = '';
         this.transactions.forEach(t => {
@@ -223,13 +240,30 @@ export default class BulkDeleteTransaction {
         
         tbody.innerHTML = html;
 
-        // Attach global helper to avoid scope issues in the HTML string
+        // Attaching UI selection helpers
         window.toggleDeleteRow = (id, isChecked) => {
             const row = this.transactions.find(t => t.id === id);
             if (row) row.selected = isChecked;
             
             const allChecked = this.transactions.every(t => t.selected);
             document.getElementById('selectAllCb').checked = allChecked;
+            this.updateDeleteButton();
+        };
+
+        window.selectTopN = (n) => {
+            const limit = n === 'ALL' ? this.transactions.length : parseInt(n, 10);
+            
+            this.transactions.forEach((t, i) => {
+                t.selected = (i < limit);
+            });
+            
+            document.querySelectorAll('.row-cb').forEach((cb, i) => {
+                cb.checked = (i < limit);
+            });
+            
+            const allChecked = this.transactions.length > 0 && this.transactions.every(t => t.selected);
+            document.getElementById('selectAllCb').checked = allChecked;
+            
             this.updateDeleteButton();
         };
     }
@@ -263,31 +297,44 @@ export default class BulkDeleteTransaction {
         const qboSelect = document.getElementById('qboSelect');
         const delBtn = document.getElementById('deleteBtn');
         
-        delBtn.innerText = "Executing Deletion..."; delBtn.disabled = true;
-        this.showAlert("Sending delete commands to QuickBooks. Do not close this window...", "warning");
+        delBtn.innerText = "Executing Deletion..."; 
+        delBtn.disabled = true;
 
         try {
             const bulkDeleteQboTransactions = httpsCallable(functions, 'bulkDeleteQboTransactions');
-            const res = await bulkDeleteQboTransactions({
-                realmId: qboSelect.value,
-                txnType: this.selectedType,
-                itemsToDelete: itemsToDelete.map(t => ({ id: t.id, syncToken: t.syncToken }))
-            });
+            
+            // Backend timeout protection: Chunk deletions into groups of 20
+            const chunkSize = 20; 
+            let totalDeleted = 0;
+            let allFailedIds = [];
 
-            const { deletedCount, failedIds } = res.data;
+            for (let i = 0; i < itemsToDelete.length; i += chunkSize) {
+                const chunk = itemsToDelete.slice(i, i + chunkSize);
+                const currentEnd = Math.min(i + chunkSize, itemsToDelete.length);
+                
+                this.showAlert(`Deleting transactions ${i + 1} to ${currentEnd} out of ${itemsToDelete.length}. Please do not close this window...`, "warning");
 
-            // Remove successfully deleted items from local state
-            this.transactions = this.transactions.filter(t => !t.selected || failedIds.includes(t.id));
-            this.renderTable();
+                const res = await bulkDeleteQboTransactions({
+                    realmId: qboSelect.value,
+                    txnType: this.selectedType,
+                    itemsToDelete: chunk.map(t => ({ id: t.id, syncToken: t.syncToken }))
+                });
 
-            if (failedIds.length > 0) {
-                this.showAlert(`Deleted ${deletedCount} items, but failed to delete ${failedIds.length} items. They may be locked by closed accounting periods or already deleted.`, "warning");
+                totalDeleted += res.data.deletedCount;
+                allFailedIds = allFailedIds.concat(res.data.failedIds || []);
+
+                this.transactions = this.transactions.filter(t => !t.selected || allFailedIds.includes(t.id));
+                this.renderTable();
+            }
+
+            if (allFailedIds.length > 0) {
+                this.showAlert(`Deleted ${totalDeleted} items, but failed to delete ${allFailedIds.length} items. They may be locked by closed accounting periods or already deleted.`, "warning");
             } else {
-                this.showAlert(`Success! ${deletedCount} transactions were permanently deleted from QBO.`, "success");
+                this.showAlert(`Success! ${totalDeleted} transactions were permanently deleted from QBO.`, "success");
             }
 
         } catch (error) {
-            this.showAlert(`Deletion Failed: ${error.message}`, "danger");
+            this.showAlert(`Deletion Failed during batch processing: ${error.message}`, "danger");
         } finally {
             this.updateDeleteButton();
         }
