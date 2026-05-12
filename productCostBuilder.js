@@ -23,6 +23,9 @@ export default class ProductCostBuilder {
         // QBO Live Data
         this.qboAccounts = [];
         this.qboItems = [];
+        this.qboClasses = []; // Added for class tracking
+        this.classSelections = {}; // Remembers class selections across tab re-renders
+        
         this.uniqueLineItems = new Set();
         this.userRole = 'guest'; 
     }
@@ -433,6 +436,7 @@ export default class ProductCostBuilder {
     async loadLiveQboData() {
         this.qboAccounts = [];
         this.qboItems = [];
+        this.qboClasses = [];
         
         const qboSelect = document.getElementById('qboSelect');
         if (!qboSelect || !qboSelect.value || !currentUser) return;
@@ -442,6 +446,7 @@ export default class ProductCostBuilder {
             const res = await fetchQboLists({ realmId: qboSelect.value });
             this.qboAccounts = res.data.accounts || [];
             this.qboItems = res.data.items || [];
+            this.qboClasses = res.data.classes || []; // Fetches classes from QBO
         } catch (e) {
             console.error("Failed to load live QBO data", e);
             this.showAlert("Could not sync with QBO. Mappings may be inaccurate.", "warning");
@@ -460,7 +465,21 @@ export default class ProductCostBuilder {
         return html;
     }
 
+    // Helper to generate Class Dropdowns mapped directly to the QBO data
+    getClassDropdown(lineKey) {
+        const selected = this.classSelections[lineKey] || "";
+        return `<select class="class-select" onchange="window.updateCostingClass('${lineKey}', this.value)" style="padding: 0.2rem; width: 100%; max-width: 150px; border-radius: 3px; border: 1px solid #ccc;">
+            <option value="">None</option>
+            ${this.qboClasses.map(c => `<option value="${c.id}" ${selected === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
+        </select>`;
+    }
+
     attachGlobalHelpers() {
+        // Automatically syncs dropdown changes to the local state so they survive re-renders
+        window.updateCostingClass = (key, val) => {
+            this.classSelections[key] = val;
+        };
+
         window.addNewDropdownItem = async (selectEl, className) => {
             const newVal = prompt("Enter the name of the new item:");
             if (!newVal || newVal.trim() === "") { selectEl.value = ""; return; }
@@ -783,6 +802,7 @@ export default class ProductCostBuilder {
             <table class="costing-table data-table" style="width:100% !important; min-width: 600px !important;">
                 <thead><tr>
                     <th style="text-align:left; width: auto;">Account</th>
+                    <th style="text-align:left; width: 120px;">Class (QBO)</th>
                     <th class="col-tot">Debit</th>
                     <th class="col-tot">Credit</th>
                     <th style="text-align:left; width: auto;">Memo</th>
@@ -798,9 +818,10 @@ export default class ProductCostBuilder {
             const item = r.querySelector('.b-item').value;
             if (w > 0 && item && item !== "ADD_NEW") {
                 totalWipCost += w;
-                const match = this.qboAccounts.find(a => a.name.toLowerCase() === `RAW - ${item}`.toLowerCase());
+                const lineKey = `RAW - ${item}`;
+                const match = this.qboAccounts.find(a => a.name.toLowerCase() === lineKey.toLowerCase());
                 const cat = match ? match.name : '<span style="color:red">Unmapped</span>';
-                creditLines.push(`<tr><td>${cat}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Raw Mat: ${item}</td></tr>`);
+                creditLines.push(`<tr><td>${cat}</td><td>${this.getClassDropdown(lineKey)}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Raw Mat: ${item}</td></tr>`);
             }
         });
         document.querySelectorAll('.labor-group').forEach(g => {
@@ -810,9 +831,10 @@ export default class ProductCostBuilder {
                 const func = r.querySelector('.l-func').value;
                 if (w > 0 && stage && func && stage !== "ADD_NEW" && func !== "ADD_NEW") {
                     totalWipCost += w;
-                    const match = this.qboAccounts.find(a => a.name.toLowerCase() === `LBR - ${stage} - ${func}`.toLowerCase());
+                    const lineKey = `LBR - ${stage} - ${func}`;
+                    const match = this.qboAccounts.find(a => a.name.toLowerCase() === lineKey.toLowerCase());
                     const cat = match ? match.name : '<span style="color:red">Unmapped</span>';
-                    creditLines.push(`<tr><td>${cat}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Labor: ${stage} - ${func}</td></tr>`);
+                    creditLines.push(`<tr><td>${cat}</td><td>${this.getClassDropdown(lineKey)}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Labor: ${stage} - ${func}</td></tr>`);
                 }
             });
         });
@@ -823,9 +845,10 @@ export default class ProductCostBuilder {
                 const lbl = r.querySelector('.o-label').value;
                 if (w > 0 && stage && lbl && stage !== "ADD_NEW" && lbl !== "ADD_NEW") {
                     totalWipCost += w;
-                    const match = this.qboAccounts.find(a => a.name.toLowerCase() === `FOH - ${stage} - ${lbl}`.toLowerCase());
+                    const lineKey = `FOH - ${stage} - ${lbl}`;
+                    const match = this.qboAccounts.find(a => a.name.toLowerCase() === lineKey.toLowerCase());
                     const cat = match ? match.name : '<span style="color:red">Unmapped</span>';
-                    creditLines.push(`<tr><td>${cat}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Overhead: ${stage} - ${lbl}</td></tr>`);
+                    creditLines.push(`<tr><td>${cat}</td><td>${this.getClassDropdown(lineKey)}</td><td></td><td class="col-tot calc-cell">${w.toFixed(2)}</td><td>Overhead: ${stage} - ${lbl}</td></tr>`);
                 }
             });
         });
@@ -834,7 +857,7 @@ export default class ProductCostBuilder {
         const fgMatch = this.qboAccounts.find(a => a.name.toLowerCase() === fgId.toLowerCase());
         const debitCat = fgMatch ? fgMatch.name : (this.batchData.isComplete ? "Finished Goods Inventory" : "Work In Progress Inventory");
         
-        html += `<tr><td><strong>${debitCat}</strong></td><td class="col-tot calc-cell" style="font-weight:bold;">${totalWipCost.toFixed(2)}</td><td></td><td>Batch ${this.batchData.batchId} Build</td></tr>`;
+        html += `<tr><td><strong>${debitCat}</strong></td><td>${this.getClassDropdown(fgId)}</td><td class="col-tot calc-cell" style="font-weight:bold;">${totalWipCost.toFixed(2)}</td><td></td><td>Batch ${this.batchData.batchId} Build</td></tr>`;
         html += creditLines.join('');
         html += `</tbody></table></div>`;
         document.getElementById('costingTabContent').innerHTML = html;
@@ -860,6 +883,7 @@ export default class ProductCostBuilder {
                 <thead><tr>
                     <th style="text-align:left; width: auto;">Line Item Generated ID</th>
                     <th style="text-align:left; width: auto;">Mapped QBO Category</th>
+                    <th style="text-align:left; width: 120px;">Class (QBO)</th>
                     <th style="text-align:right; width: 120px;">Qty / Hrs</th>
                     <th style="text-align:right; width: 120px;">Cost Value</th>
                 </tr></thead>
@@ -878,7 +902,7 @@ export default class ProductCostBuilder {
                 const lineId = `RAW - ${item}`;
                 const match = this.qboAccounts.find(a => a.name.toLowerCase() === lineId.toLowerCase());
                 const cat = match ? match.name : '<span style="color:red">Unmapped</span>';
-                creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-q).toFixed(2)}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-w).toFixed(2)}</td></tr>`);
+                creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td>${this.getClassDropdown(lineId)}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-q).toFixed(2)}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-w).toFixed(2)}</td></tr>`);
             }
         });
         
@@ -893,7 +917,7 @@ export default class ProductCostBuilder {
                     const lineId = `LBR - ${stage} - ${func}`;
                     const match = this.qboAccounts.find(a => a.name.toLowerCase() === lineId.toLowerCase());
                     const cat = match ? match.name : '<span style="color:red">Unmapped</span>';
-                    creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-h).toFixed(2)}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-w).toFixed(2)}</td></tr>`);
+                    creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td>${this.getClassDropdown(lineId)}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-h).toFixed(2)}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-w).toFixed(2)}</td></tr>`);
                 }
             });
         });
@@ -909,7 +933,7 @@ export default class ProductCostBuilder {
                     const lineId = `FOH - ${stage} - ${lbl}`;
                     const match = this.qboAccounts.find(a => a.name.toLowerCase() === lineId.toLowerCase());
                     const cat = match ? match.name : '<span style="color:red">Unmapped</span>';
-                    creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-h).toFixed(2)}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-w).toFixed(2)}</td></tr>`);
+                    creditLines.push(`<tr><td><strong>${lineId}</strong></td><td>${cat}</td><td>${this.getClassDropdown(lineId)}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-h).toFixed(2)}</td><td class="calc-cell" style="text-align:right; white-space:nowrap;">${(-w).toFixed(2)}</td></tr>`);
                 }
             });
         });
@@ -919,7 +943,7 @@ export default class ProductCostBuilder {
         const debitCat = fgMatch ? fgMatch.name : (this.batchData.isComplete ? "Finished Goods Inventory" : "Work In Progress Inventory");
         let fgQty = parseFloat(document.getElementById('y_gummies').innerText.replace(/,/g, '')) || 0;
 
-        html += `<tr><td><strong>${fgId}</strong></td><td><strong>${debitCat}</strong></td><td class="calc-cell" style="font-weight:bold; color:#27ae60; text-align:right; white-space:nowrap;">+${fgQty.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="calc-cell" style="font-weight:bold; color:#27ae60; text-align:right; white-space:nowrap;">+${totalWipCost.toFixed(2)}</td></tr>`;
+        html += `<tr><td><strong>${fgId}</strong></td><td><strong>${debitCat}</strong></td><td>${this.getClassDropdown(fgId)}</td><td class="calc-cell" style="font-weight:bold; color:#27ae60; text-align:right; white-space:nowrap;">+${fgQty.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="calc-cell" style="font-weight:bold; color:#27ae60; text-align:right; white-space:nowrap;">+${totalWipCost.toFixed(2)}</td></tr>`;
         
         html += creditLines.join('');
         html += `</tbody></table></div>`;
@@ -1251,12 +1275,13 @@ export default class ProductCostBuilder {
                 
                 document.querySelectorAll('#costingTabContent tbody tr').forEach(tr => {
                     const accName = tr.cells[0].innerText.trim();
-                    const debit = parseFloat(tr.cells[1].innerText.replace(/,/g, '')) || 0;
-                    const credit = parseFloat(tr.cells[2].innerText.replace(/,/g, '')) || 0;
-                    const memo = tr.cells[3].innerText.trim();
+                    const classId = tr.querySelector('.class-select') ? tr.querySelector('.class-select').value : "";
+                    const debit = parseFloat(tr.cells[2].innerText.replace(/,/g, '')) || 0;
+                    const credit = parseFloat(tr.cells[3].innerText.replace(/,/g, '')) || 0;
+                    const memo = tr.cells[4].innerText.trim();
                     
-                    if (debit > 0) lines.push({ description: memo, amount: debit, postingType: "Debit", accountName: accName });
-                    if (credit > 0) lines.push({ description: memo, amount: credit, postingType: "Credit", accountName: accName });
+                    if (debit > 0) lines.push({ description: memo, amount: debit, postingType: "Debit", accountName: accName, classId: classId });
+                    if (credit > 0) lines.push({ description: memo, amount: credit, postingType: "Credit", accountName: accName, classId: classId });
                 });
 
                 if (lines.length === 0) throw new Error("No non-zero costs available to push.");
@@ -1273,12 +1298,14 @@ export default class ProductCostBuilder {
                 const lines = [];
                 document.querySelectorAll('#costingTabContent tbody tr').forEach(tr => {
                     const lineId = tr.cells[0].innerText.trim();
-                    const qty = parseFloat(tr.cells[2].innerText.replace(/,/g, '')) || 0;
+                    const classId = tr.querySelector('.class-select') ? tr.querySelector('.class-select').value : "";
+                    const qty = parseFloat(tr.cells[3].innerText.replace(/,/g, '')) || 0;
                     
                     if (qty !== 0) {
                         lines.push({
                             itemName: lineId,
-                            qtyDiff: qty.toString()
+                            qtyDiff: qty.toString(),
+                            classId: classId
                         });
                     }
                 });
