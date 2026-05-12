@@ -406,11 +406,25 @@ export default class AdpPayroll {
         };
 
         const earningCols = [];
+        const detailedEECols = [];
+        const detailedERCols = [];
+
+        // Flexible Regular Expressions for extracting specific taxes
+        const eePatterns = [/^FED\sFIT$/i, /^FED\sSOCSEC$/i, /^FED\sMEDCARE$/i, /^[A-Z]{2}\s?SIT$/i, /^Advance$/i];
+        const erPatterns = [/^FED\sSOCSEC-ER$/i, /^FED\sMEDCARE-ER$/i, /^FED\sFUTA$/i, /^[A-Z]{2}\s?SUI-ER$/i];
+
         for (let i = 0; i < headers.length; i++) {
-            if (headers[i].startsWith('Earning') && headers[i].length >= 7) {
+            const h = headers[i];
+            if (h.startsWith('Earning') && h.length >= 7) {
                 if (headers[i + 3] === 'Amount') {
                     earningCols.push({ nameIdx: i, amountIdx: i + 3 });
                 }
+            }
+            if (eePatterns.some(p => p.test(h))) {
+                detailedEECols.push({ name: h, idx: i, isAdvance: /^Advance$/i.test(h) });
+            }
+            if (erPatterns.some(p => p.test(h))) {
+                detailedERCols.push({ name: h, idx: i });
             }
         }
 
@@ -429,13 +443,13 @@ export default class AdpPayroll {
             const projStr = project ? ` - ${project}` : '';
 
             const totalEarn = this.parseAmt(row[colIdx.totalEarn]);
-            const erTaxes = this.parseAmt(row[colIdx.erTaxes]);
-            const eeTaxes = this.parseAmt(row[colIdx.eeTaxes]);
-            const deductions = this.parseAmt(row[colIdx.deductions]);
+            const origErTaxes = this.parseAmt(row[colIdx.erTaxes]);
+            const origEeTaxes = this.parseAmt(row[colIdx.eeTaxes]);
+            const origDeductions = this.parseAmt(row[colIdx.deductions]);
             const netPay = this.parseAmt(row[colIdx.netPay]);
             const checkDate = colIdx.checkDate >= 0 ? row[colIdx.checkDate] : new Date().toISOString();
 
-            if (totalEarn === 0 && erTaxes === 0 && netPay === 0) continue;
+            if (totalEarn === 0 && origErTaxes === 0 && netPay === 0) continue;
 
             let dateStamp = this.formatDateStr(checkDate);
             const empEarnings = [];
@@ -452,7 +466,42 @@ export default class AdpPayroll {
 
             const baseEarn = totalEarn !== 0 ? totalEarn : calculatedEarnTotal;
 
-            // Generate Debits
+            // Extract dynamic detailed EE and ER Taxes to avoid double counting
+            let detailedEETotal = 0;
+            let detailedDeductionTotal = 0;
+            let detailedERTotal = 0;
+
+            const eeDetails = [];
+            const erDetails = [];
+
+            detailedEECols.forEach(col => {
+                const amt = this.parseAmt(row[col.idx]);
+                if (amt !== 0) {
+                    eeDetails.push({ name: col.name, amount: amt, isAdvance: col.isAdvance });
+                    if (col.isAdvance) detailedDeductionTotal += amt;
+                    else detailedEETotal += amt;
+                }
+            });
+
+            detailedERCols.forEach(col => {
+                const amt = this.parseAmt(row[col.idx]);
+                if (amt !== 0) {
+                    erDetails.push({ name: col.name, amount: amt });
+                    detailedERTotal += amt;
+                }
+            });
+
+            // Adjust fallback summary totals
+            let erTaxes = origErTaxes - detailedERTotal;
+            if (Math.abs(erTaxes) < 0.01) erTaxes = 0;
+
+            let eeTaxes = origEeTaxes - detailedEETotal;
+            if (Math.abs(eeTaxes) < 0.01) eeTaxes = 0;
+
+            let deductions = origDeductions - detailedDeductionTotal;
+            if (Math.abs(deductions) < 0.01) deductions = 0;
+
+            // Generate Primary Debits (Wages and generic ER allocation)
             empEarnings.forEach(earn => {
                 const ratio = baseEarn !== 0 ? earn.amount / baseEarn : 0;
                 const allocatedErTax = erTaxes * ratio;
@@ -493,7 +542,7 @@ export default class AdpPayroll {
                 }
             });
 
-            // Generate Credits
+            // Generate Generic Credits (Fallback)
             if (eeTaxes !== 0) {
                 const li = `Payroll Liabilities - EE Taxes`;
                 expandedTransactions.push({
@@ -545,6 +594,63 @@ export default class AdpPayroll {
                     selected: false
                 });
             }
+
+            // Generate Specific / Detailed EE Tax Credits
+            eeDetails.forEach(ee => {
+                const li = `Payroll Liabilities - ${ee.name}`;
+                expandedTransactions.push({
+                    uid: Date.now().toString(36) + Math.random().toString(36).substring(2),
+                    postingType: 'Credit',
+                    transactionType: ee.isAdvance ? 'Other Deductions' : 'EE Tax Payable',
+                    lineItem: li,
+                    description: `${ee.name}: ${empName}`,
+                    project: project,
+                    empName: empName,
+                    amount: Math.abs(ee.amount),
+                    date: dateStamp,
+                    category: (this.categoriesDict[li] || {}).category || "",
+                    classId: "",
+                    selected: false
+                });
+            });
+
+            // Generate Specific / Detailed ER Debits & Credits
+            erDetails.forEach(er => {
+                // ER Expense (Debit)
+                const liExp = `${payFreq} - ${er.name}${projStr}`;
+                expandedTransactions.push({
+                    uid: Date.now().toString(36) + Math.random().toString(36).substring(2),
+                    postingType: 'Debit',
+                    transactionType: 'ER Tax Allocation',
+                    lineItem: liExp,
+                    description: `${er.name}: ${empName}`,
+                    project: project,
+                    empName: empName,
+                    amount: Math.abs(er.amount),
+                    date: dateStamp,
+                    category: (this.categoriesDict[liExp] || {}).category || "",
+                    classId: "",
+                    selected: false
+                });
+
+                // ER Liability (Credit)
+                const liLiab = `Payroll Liabilities - ${er.name}`;
+                expandedTransactions.push({
+                    uid: Date.now().toString(36) + Math.random().toString(36).substring(2),
+                    postingType: 'Credit',
+                    transactionType: 'ER Tax Payable',
+                    lineItem: liLiab,
+                    description: `${er.name}: ${empName}`,
+                    project: project,
+                    empName: empName,
+                    amount: Math.abs(er.amount),
+                    date: dateStamp,
+                    category: (this.categoriesDict[liLiab] || {}).category || "",
+                    classId: "",
+                    selected: false
+                });
+            });
+
             if (netPay !== 0) {
                 const li = `Net Pay Clearing`;
                 expandedTransactions.push({
@@ -699,10 +805,9 @@ export default class AdpPayroll {
 
             let typeDropdownHtml = `<select id="unmap-type-${i}" style="padding:0.4rem; width:100%; box-sizing: border-box;" ${accInQbo ? 'disabled' : ''}>`;
             
-            // Smart Defaults for Payroll
             const lowerLine = lineItem.toLowerCase();
-            let defaultType = 'Expense'; // Wages, ER Taxes
-            if (lowerLine.includes('taxes') || lowerLine.includes('deductions')) defaultType = 'Other Current Liability';
+            let defaultType = 'Expense'; 
+            if (lowerLine.includes('taxes') || lowerLine.includes('deductions') || lowerLine.includes('liabilities')) defaultType = 'Other Current Liability';
             if (lowerLine.includes('net pay')) defaultType = 'Bank';
 
             fullAccountTypes.forEach(t => {
