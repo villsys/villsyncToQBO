@@ -21,6 +21,7 @@ export default class Shopify {
         // Live QBO Data
         this.qboAccounts = [];
         this.qboItems = [];
+        this.qboClasses = []; // Added for class tracking
 
         this.depositAccount = "Shopify Clearing"; 
         this.startDate = "";
@@ -224,6 +225,7 @@ export default class Shopify {
     async loadLiveQboData() {
         this.qboAccounts = [];
         this.qboItems = [];
+        this.qboClasses = [];
         
         const qboSelect = document.getElementById('qboSelect');
         if (!qboSelect || !qboSelect.value || !currentUser) return;
@@ -233,6 +235,7 @@ export default class Shopify {
             const res = await fetchQboLists({ realmId: qboSelect.value });
             this.qboAccounts = res.data.accounts || [];
             this.qboItems = res.data.items || [];
+            this.qboClasses = res.data.classes || [];
         } catch (e) {
             console.error("Failed to load live QBO data", e);
             this.showAlert("Could not sync with QBO. Mappings may be inaccurate.", "warning");
@@ -604,6 +607,7 @@ export default class Shopify {
                     mainTabGrouping: pushType,          
                     qboPushType: pushType,              
                     category: (this.categoriesDict[lineItemKey] || {}).category || "",
+                    classId: "",
                     selected: false
                 });
             });
@@ -627,6 +631,7 @@ export default class Shopify {
                     mainTabGrouping: pushType,          
                     qboPushType: pushType,              
                     category: (this.categoriesDict[lineItemKey] || {}).category || "",
+                    classId: "",
                     selected: false
                 });
             }
@@ -650,6 +655,7 @@ export default class Shopify {
                     mainTabGrouping: pushType,          
                     qboPushType: pushType,              
                     category: (this.categoriesDict[lineItemKey] || {}).category || "",
+                    classId: "",
                     selected: false
                 });
             }
@@ -673,6 +679,7 @@ export default class Shopify {
                     mainTabGrouping: pushType,          
                     qboPushType: pushType,              
                     category: (this.categoriesDict[lineItemKey] || {}).category || "",
+                    classId: "",
                     selected: false
                 });
             }
@@ -696,6 +703,7 @@ export default class Shopify {
                     mainTabGrouping: pushType,          
                     qboPushType: pushType,              
                     category: (this.categoriesDict[lineItemKey] || {}).category || "",
+                    classId: "",
                     selected: false
                 });
             }
@@ -767,7 +775,7 @@ export default class Shopify {
                         quantity: 1, rate: amt, totalAmount: amt, dateTime: row['Payout Date'] || row['Transaction Date'],
                         settlementId: group.payoutId, orderId: row['Order'] || '', 
                         paymentMethod: group.method, mainTabGrouping: pushType, qboPushType: pushType,
-                        category: (this.categoriesDict[liAmount] || {}).category || "", selected: false
+                        category: (this.categoriesDict[liAmount] || {}).category || "", classId: "", selected: false
                     });
                 }
 
@@ -781,7 +789,7 @@ export default class Shopify {
                         quantity: 1, rate: reversedFee, totalAmount: reversedFee, dateTime: row['Payout Date'] || row['Transaction Date'],
                         settlementId: group.payoutId, orderId: row['Order'] || '', 
                         paymentMethod: group.method, mainTabGrouping: pushType, qboPushType: pushType,
-                        category: (this.categoriesDict[liFee] || {}).category || "", selected: false
+                        category: (this.categoriesDict[liFee] || {}).category || "", classId: "", selected: false
                     });
                 }
             });
@@ -797,7 +805,7 @@ export default class Shopify {
                     quantity: 1, rate: absNet, totalAmount: absNet, dateTime: group.date,
                     settlementId: group.payoutId, orderId: '', 
                     paymentMethod: group.method, mainTabGrouping: 'deposits', qboPushType: 'deposits',
-                    category: (this.categoriesDict[liDeposit] || {}).category || "", selected: false
+                    category: (this.categoriesDict[liDeposit] || {}).category || "", classId: "", selected: false
                 });
             }
         }
@@ -821,6 +829,7 @@ export default class Shopify {
                 <th>Type</th>
                 <th>Line Item</th>
                 <th>Category</th>
+                <th>Class (QBO)</th>
                 <th>Description</th>
                 <th>SKU</th>
                 <th style="text-align: right;">Qty</th>
@@ -833,7 +842,7 @@ export default class Shopify {
         `;
 
         if (currentData.length === 0) {
-            html += `<tr><td colspan="12" style="text-align:center;">No data matches the current filters.</td></tr>`;
+            html += `<tr><td colspan="13" style="text-align:center;">No data matches the current filters.</td></tr>`;
         }
 
         currentData.forEach((t) => {
@@ -847,11 +856,17 @@ export default class Shopify {
                 catDisplay = `<input type="text" class="cat-input" placeholder="Add Category..." onblur="window.updateCat('${t.lineItem}', this.value)"><span class="text-danger"> Missing</span>`;
             }
 
+            let classDropdown = `<select onchange="window.updateLineClass('${t.uid}', this.value)" style="padding: 0.2rem; max-width: 120px; border-radius: 3px; border: 1px solid #ccc;">
+                <option value="">None</option>
+                ${this.qboClasses.map(c => `<option value="${c.id}" ${t.classId === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
+            </select>`;
+
             html += `<tr>
                 <td><input type="checkbox" class="row-checkbox" data-uid="${t.uid}" ${t.selected ? 'checked' : ''} onchange="window.toggleRow('${t.uid}', this.checked)"></td>
                 <td>${t.transactionType}</td>
                 <td><strong>${t.lineItem}</strong></td>
                 <td>${catDisplay}</td>
+                <td>${classDropdown}</td>
                 <td><span style="font-size: 0.8rem;">${t.description}</span></td>
                 <td>${t.sku || ''}</td>
                 <td style="text-align: right;">${t.quantity}</td>
@@ -882,6 +897,11 @@ export default class Shopify {
             const allChecked = currentData.length > 0 && currentData.every(t => t.selected);
             const selectAllCb = document.getElementById('selectAllCb');
             if (selectAllCb) selectAllCb.checked = allChecked;
+        };
+
+        window.updateLineClass = (uid, classId) => {
+            const masterRow = this.transactions.find(t => t.uid === uid);
+            if (masterRow) masterRow.classId = classId;
         };
 
         window.deleteSelected = () => {
