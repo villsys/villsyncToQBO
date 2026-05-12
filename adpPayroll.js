@@ -13,6 +13,7 @@ export default class AdpPayroll {
         // Live QBO Data
         this.qboAccounts = [];
         this.qboItems = [];
+        this.qboClasses = [];
         
         this.activeMainTab = "all";
         this.activeSubTab = "table";
@@ -162,6 +163,13 @@ export default class AdpPayroll {
                 document.querySelectorAll('.sub-tabs .tab').forEach(t => t.classList.remove('active'));
                 e.target.classList.add('active');
                 this.activeSubTab = e.target.dataset.subtab;
+                
+                // Update push button text contextually
+                const syncBtn = document.getElementById('syncQboBtn');
+                if (syncBtn) {
+                    syncBtn.innerText = this.activeSubTab === 'table' ? "Push Checks to QBO" : "Push Journal Entry";
+                }
+                
                 this.renderActiveView();
             });
         });
@@ -220,6 +228,7 @@ export default class AdpPayroll {
     async loadLiveQboData() {
         this.qboAccounts = [];
         this.qboItems = [];
+        this.qboClasses = [];
         
         const qboSelect = document.getElementById('qboSelect');
         if (!qboSelect || !qboSelect.value || !currentUser) return;
@@ -229,6 +238,7 @@ export default class AdpPayroll {
             const res = await fetchQboLists({ realmId: qboSelect.value });
             this.qboAccounts = res.data.accounts || [];
             this.qboItems = res.data.items || [];
+            this.qboClasses = res.data.classes || [];
         } catch (e) {
             console.error("Failed to load live QBO data", e);
             this.showAlert("Could not sync with QBO. Mappings may be inaccurate.", "warning");
@@ -385,6 +395,7 @@ export default class AdpPayroll {
         const colIdx = {
             empName: headers.indexOf('Employee Name'),
             payFreq: headers.indexOf('Pay Frequency'),
+            department: headers.indexOf('Department'),
             project: headers.indexOf('Project'),
             totalEarn: headers.indexOf('Total Earnings'),
             netPay: headers.indexOf('Net Pay'),
@@ -411,8 +422,10 @@ export default class AdpPayroll {
             
             if (!empName || empName.includes('Total') || empName.includes('Company') || empName === '') continue;
 
-            const payFreq = colIdx.payFreq >= 0 ? (row[colIdx.payFreq] || 'Payroll') : 'Payroll';
-            const project = colIdx.project >= 0 ? (row[colIdx.project] || '') : '';
+            const payFreq = colIdx.payFreq >= 0 ? (row[colIdx.payFreq] || 'Payroll').trim() : 'Payroll';
+            const department = colIdx.department >= 0 ? (row[colIdx.department] || '').trim() : '';
+            const deptStr = department ? ` - ${department}` : '';
+            const project = colIdx.project >= 0 ? (row[colIdx.project] || '').trim() : '';
             const projStr = project ? ` - ${project}` : '';
 
             const totalEarn = this.parseAmt(row[colIdx.totalEarn]);
@@ -443,8 +456,9 @@ export default class AdpPayroll {
             empEarnings.forEach(earn => {
                 const ratio = baseEarn !== 0 ? earn.amount / baseEarn : 0;
                 const allocatedErTax = erTaxes * ratio;
+                const earnNameClean = earn.name;
 
-                const wageLineItem = `${payFreq} - ${earn.name}${projStr}`;
+                const wageLineItem = `${payFreq} ${earnNameClean}${deptStr}${projStr}`;
                 expandedTransactions.push({
                     uid: Date.now().toString(36) + Math.random().toString(36).substring(2),
                     postingType: 'Debit',
@@ -456,11 +470,12 @@ export default class AdpPayroll {
                     amount: Math.abs(earn.amount),
                     date: dateStamp,
                     category: (this.categoriesDict[wageLineItem] || {}).category || "",
+                    classId: "",
                     selected: false
                 });
 
                 if (allocatedErTax !== 0) {
-                    const erTaxLineItem = `${payFreq} - ${earn.name} - ER Taxes${projStr}`;
+                    const erTaxLineItem = `${payFreq} ${earnNameClean} - ER Taxes${deptStr}${projStr}`;
                     expandedTransactions.push({
                         uid: Date.now().toString(36) + Math.random().toString(36).substring(2),
                         postingType: 'Debit',
@@ -472,6 +487,7 @@ export default class AdpPayroll {
                         amount: Math.abs(allocatedErTax),
                         date: dateStamp,
                         category: (this.categoriesDict[erTaxLineItem] || {}).category || "",
+                        classId: "",
                         selected: false
                     });
                 }
@@ -491,6 +507,7 @@ export default class AdpPayroll {
                     amount: Math.abs(eeTaxes),
                     date: dateStamp,
                     category: (this.categoriesDict[li] || {}).category || "",
+                    classId: "",
                     selected: false
                 });
             }
@@ -507,6 +524,7 @@ export default class AdpPayroll {
                     amount: Math.abs(erTaxes),
                     date: dateStamp,
                     category: (this.categoriesDict[li] || {}).category || "",
+                    classId: "",
                     selected: false
                 });
             }
@@ -523,6 +541,7 @@ export default class AdpPayroll {
                     amount: Math.abs(deductions),
                     date: dateStamp,
                     category: (this.categoriesDict[li] || {}).category || "",
+                    classId: "",
                     selected: false
                 });
             }
@@ -539,6 +558,7 @@ export default class AdpPayroll {
                     amount: Math.abs(netPay),
                     date: dateStamp,
                     category: (this.categoriesDict[li] || {}).category || "",
+                    classId: "",
                     selected: false
                 });
             }
@@ -557,7 +577,7 @@ export default class AdpPayroll {
     }
 
     renderTable() {
-        const currentData = this.transactions.filter(t => !t.selected); // Allow filtering out deleted/skipped rows
+        const currentData = this.transactions.filter(t => !t.selected); 
         
         let html = `
             <div style="margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center;">
@@ -569,6 +589,7 @@ export default class AdpPayroll {
                 <th>Posting</th>
                 <th>Line Item Identifier</th>
                 <th>Category (QBO)</th>
+                <th>Class (QBO)</th>
                 <th>Employee Name</th>
                 <th>Project</th>
                 <th>Description</th>
@@ -578,7 +599,7 @@ export default class AdpPayroll {
         `;
 
         if (currentData.length === 0) {
-            html += `<tr><td colspan="9" style="text-align:center; padding:2rem;">No data available.</td></tr>`;
+            html += `<tr><td colspan="10" style="text-align:center; padding:2rem;">No data available.</td></tr>`;
         }
 
         currentData.forEach((t) => {
@@ -593,11 +614,17 @@ export default class AdpPayroll {
 
             const postColor = t.postingType === 'Debit' ? '#27ae60' : '#e74c3c';
 
+            let classDropdown = `<select onchange="window.updateLineClass('${t.uid}', this.value)" style="padding: 0.2rem; max-width: 120px; border-radius: 3px; border: 1px solid #ccc;">
+                <option value="">None</option>
+                ${this.qboClasses.map(c => `<option value="${c.id}" ${t.classId === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
+            </select>`;
+
             html += `<tr>
                 <td><input type="checkbox" class="row-checkbox" data-uid="${t.uid}" ${t.selected ? 'checked' : ''} onchange="window.toggleRow('${t.uid}', this.checked)"></td>
                 <td style="color:${postColor}; font-weight:bold;">${t.postingType}</td>
                 <td><strong>${t.lineItem}</strong></td>
                 <td>${catDisplay}</td>
+                <td>${classDropdown}</td>
                 <td>${t.empName}</td>
                 <td>${t.project || '-'}</td>
                 <td><span style="font-size: 0.8rem; color: #555;">${t.description}</span></td>
@@ -612,12 +639,17 @@ export default class AdpPayroll {
         window.toggleSelectAll = (checked) => {
             this.transactions.forEach(t => t.selected = checked);
             document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = checked);
-            this.renderActiveView(); // re-render to hide/show checked rows if logic implemented
+            this.renderActiveView(); 
         };
         
         window.toggleRow = (uid, checked) => {
             const masterRow = this.transactions.find(t => t.uid === uid);
             if (masterRow) masterRow.selected = checked;
+        };
+
+        window.updateLineClass = (uid, classId) => {
+            const masterRow = this.transactions.find(t => t.uid === uid);
+            if (masterRow) masterRow.classId = classId;
         };
     }
 
@@ -773,11 +805,12 @@ export default class AdpPayroll {
                 <div class="table-responsive">
                 <table><thead><tr>
                     <th>Account / Category</th>
+                    <th>Class</th>
                     <th style="text-align: right;">Debit</th>
                     <th style="text-align: right;">Credit</th>
                     <th>Line Description</th>
                 </tr></thead><tbody>
-                <tr><td colspan="4" style="text-align:center;">No data matches the current filters.</td></tr>
+                <tr><td colspan="5" style="text-align:center;">No data matches the current filters.</td></tr>
                 </tbody></table></div>`;
             const tabContent = document.getElementById('tabContent');
             if(tabContent) tabContent.innerHTML = html;
@@ -800,16 +833,24 @@ export default class AdpPayroll {
                 <div class="table-responsive" style="margin-bottom: 20px;">
                 <table><thead><tr>
                     <th>Account / Category</th>
+                    <th>Class</th>
                     <th style="text-align: right;">Debit</th>
                     <th style="text-align: right;">Credit</th>
                     <th>Line Description</th>
                 </tr></thead><tbody>
             `;
 
+            // Detailed Grouping: preserves Employee and Class assignments in Journal View
             let summary = {};
             lines.forEach(t => {
-                const key = `${t.postingType}_${t.lineItem}`;
-                if (!summary[key]) summary[key] = { catName: t.category || `<span class="text-danger">Missing Mapping</span>`, amt: 0, post: t.postingType, desc: t.lineItem };
+                const key = `${t.empName}_${t.postingType}_${t.category}_${t.classId || 'none'}`;
+                if (!summary[key]) summary[key] = { 
+                    catName: t.category || `<span class="text-danger">Missing Mapping</span>`, 
+                    amt: 0, 
+                    post: t.postingType, 
+                    desc: `Payroll: ${t.empName}`,
+                    className: this.qboClasses.find(c => c.id === t.classId)?.name || `<span style="color:#aaa; font-style:italic;">None</span>`
+                };
                 summary[key].amt += t.amount;
             });
 
@@ -828,14 +869,14 @@ export default class AdpPayroll {
                 if(line.post === 'Debit') totalDebit += line.amt;
                 if(line.post === 'Credit') totalCredit += line.amt;
 
-                html += `<tr><td>${line.catName}</td><td style="text-align: right; color:#27ae60; font-weight:bold;">${debitStr}</td><td style="text-align: right; color:#e74c3c; font-weight:bold;">${creditStr}</td><td>${line.desc}</td></tr>`;
+                html += `<tr><td>${line.catName}</td><td>${line.className}</td><td style="text-align: right; color:#27ae60; font-weight:bold;">${debitStr}</td><td style="text-align: right; color:#e74c3c; font-weight:bold;">${creditStr}</td><td>${line.desc}</td></tr>`;
             });
 
             const diff = Math.abs(totalDebit - totalCredit);
             const balanceWarning = diff > 0.05 ? `<span style="color:#e74c3c; font-size:0.8rem; margin-left: 10px;">(Out of Balance by $${diff.toFixed(2)})</span>` : `<span style="color:#27ae60; font-size:0.8rem; margin-left: 10px;">(Balanced)</span>`;
 
             html += `<tr style="font-weight:bold; background:#e9ecef">
-                <td>TOTAL ${balanceWarning}</td>
+                <td colspan="2">TOTAL ${balanceWarning}</td>
                 <td style="text-align: right;">${totalDebit.toFixed(2)}</td>
                 <td style="text-align: right;">${totalCredit.toFixed(2)}</td>
                 <td></td>
@@ -884,7 +925,6 @@ export default class AdpPayroll {
             };
 
             const getOrCreateQboAccount = httpsCallable(config.functions, 'getOrCreateQboAccount');
-            const pushJournalEntry = httpsCallable(config.functions, 'pushJournalEntry');
 
             // Group by Date for Summary
             const groups = {};
@@ -897,38 +937,76 @@ export default class AdpPayroll {
             let pushedIds = [];
 
             for (const [dateStr, lines] of Object.entries(groups)) {
-                // Aggregate by category and posting type
-                const summary = {};
-                lines.forEach(t => {
-                    const key = `${t.postingType}_${t.category}`;
-                    if (!summary[key]) summary[key] = { amt: 0, post: t.postingType, cat: t.category };
-                    summary[key].amt += t.amount;
-                });
-
-                const qboLines = [];
-                for (const [key, lineData] of Object.entries(summary)) {
-                    if (Math.abs(lineData.amt) < 0.01) continue; 
-                    
-                    const catResponse = await getOrCreateQboAccount({ accountName: lineData.cat, realmId: config.realmId });
-                    qboLines.push({ 
-                        postingType: lineData.post, 
-                        amount: lineData.amt, 
-                        qboAccountId: catResponse.data.id, 
-                        description: `ADP Payroll Allocation` 
-                    });
-                }
-
-                // Balance enforcement check
-                const debits = qboLines.filter(l => l.postingType === 'Debit').reduce((s, l) => s + l.amount, 0);
-                const credits = qboLines.filter(l => l.postingType === 'Credit').reduce((s, l) => s + l.amount, 0);
                 
-                if (Math.abs(debits - credits) > 0.05) {
-                    throw new Error(`The aggregated journal entry for ${dateStr} is out of balance by $${Math.abs(debits - credits).toFixed(2)}. This prevents QBO from accepting the entry. Please check your raw file integrity.`);
-                }
+                // BRANCH 1: Push as Individual Checks per Employee
+                if (this.activeSubTab === 'table') {
+                    const pushCheck = httpsCallable(config.functions, 'pushCheck'); 
+                    
+                    const empGroups = {};
+                    lines.forEach(t => {
+                        if (!empGroups[t.empName]) empGroups[t.empName] = [];
+                        empGroups[t.empName].push(t);
+                    });
 
-                const response = await pushJournalEntry({ realmId: config.realmId, lines: qboLines, txnDate: dateStr, privateNote: `Imported via VilBooks - ADP Payroll Run` });
-                if (response.data.success) {
-                    pushedIds.push({ type: "JournalEntry", id: response.data.qboResponseId });
+                    for (const [empName, empLines] of Object.entries(empGroups)) {
+                        const qboLines = [];
+                        for (const t of empLines) {
+                            if (Math.abs(t.amount) < 0.01) continue;
+                            const catResponse = await getOrCreateQboAccount({ accountName: t.category, realmId: config.realmId });
+                            qboLines.push({
+                                postingType: t.postingType,
+                                amount: t.amount,
+                                qboAccountId: catResponse.data.id,
+                                description: t.lineItem,
+                                classId: t.classId || "",
+                                entityName: empName
+                            });
+                        }
+                        
+                        const response = await pushCheck({ realmId: config.realmId, lines: qboLines, txnDate: dateStr, payeeName: empName, privateNote: `Imported via VilBooks - ADP Payroll Check` });
+                        if (response.data.success) {
+                            pushedIds.push({ type: "Check", id: response.data.qboResponseId });
+                        }
+                    }
+                } 
+                // BRANCH 2: Push as Highly Detailed Journal Entry
+                else {
+                    const pushJournalEntry = httpsCallable(config.functions, 'pushJournalEntry');
+                    
+                    const summary = {};
+                    lines.forEach(t => {
+                        const key = `${t.empName}_${t.postingType}_${t.category}_${t.classId || 'none'}`;
+                        if (!summary[key]) summary[key] = { amt: 0, post: t.postingType, cat: t.category, classId: t.classId, empName: t.empName };
+                        summary[key].amt += t.amount;
+                    });
+
+                    const qboLines = [];
+                    for (const [key, lineData] of Object.entries(summary)) {
+                        if (Math.abs(lineData.amt) < 0.01) continue; 
+                        
+                        const catResponse = await getOrCreateQboAccount({ accountName: lineData.cat, realmId: config.realmId });
+                        qboLines.push({ 
+                            postingType: lineData.post, 
+                            amount: lineData.amt, 
+                            qboAccountId: catResponse.data.id, 
+                            description: `ADP Payroll: ${lineData.empName}`,
+                            classId: lineData.classId || "",
+                            entityName: lineData.empName || ""
+                        });
+                    }
+
+                    // Balance enforcement check for Journal Entry
+                    const debits = qboLines.filter(l => l.postingType === 'Debit').reduce((s, l) => s + l.amount, 0);
+                    const credits = qboLines.filter(l => l.postingType === 'Credit').reduce((s, l) => s + l.amount, 0);
+                    
+                    if (Math.abs(debits - credits) > 0.05) {
+                        throw new Error(`The aggregated journal entry for ${dateStr} is out of balance by $${Math.abs(debits - credits).toFixed(2)}. This prevents QBO from accepting the entry. Please check your raw file integrity.`);
+                    }
+
+                    const response = await pushJournalEntry({ realmId: config.realmId, lines: qboLines, txnDate: dateStr, privateNote: `Imported via VilBooks - Detailed ADP Payroll Run` });
+                    if (response.data.success) {
+                        pushedIds.push({ type: "JournalEntry", id: response.data.qboResponseId });
+                    }
                 }
             }
 
@@ -937,7 +1015,7 @@ export default class AdpPayroll {
                     timestamp: new Date().toISOString(),
                     realmId: config.realmId,
                     tab: 'Payroll',
-                    view: 'Journal Summary',
+                    view: this.activeSubTab === 'table' ? 'Checks (Data View)' : 'Journal Summary',
                     qboIds: pushedIds,
                     pushedBy: currentUser.email
                 });
@@ -950,8 +1028,9 @@ export default class AdpPayroll {
                     this.updateReadyStatus(); 
                 }
                 
-                if (statusText) statusText.innerText = `Push completed successfully! ${pushedIds.length} Journal Entries saved to QBO.`;
-                this.showAlert(`Success! ${pushedIds.length} Journal Entries were pushed to QuickBooks.`, "success");
+                const entryType = this.activeSubTab === 'table' ? "Checks" : "Journal Entries";
+                if (statusText) statusText.innerText = `Push completed successfully! ${pushedIds.length} ${entryType} saved to QBO.`;
+                this.showAlert(`Success! ${pushedIds.length} ${entryType} were pushed to QuickBooks.`, "success");
             }
 
         } catch (error) {
