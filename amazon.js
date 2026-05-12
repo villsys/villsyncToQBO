@@ -19,6 +19,7 @@ export default class Amazon {
         // Live QBO Data
         this.qboAccounts = [];
         this.qboItems = [];
+        this.qboClasses = []; // Added for class tracking
         
         this.depositAccount = "Payments to Deposit"; 
         this.startDate = "";
@@ -259,6 +260,7 @@ export default class Amazon {
     async loadLiveQboData() {
         this.qboAccounts = [];
         this.qboItems = [];
+        this.qboClasses = [];
         
         const qboSelect = document.getElementById('qboSelect');
         if (!qboSelect || !qboSelect.value || !currentUser) return;
@@ -268,6 +270,7 @@ export default class Amazon {
             const res = await fetchQboLists({ realmId: qboSelect.value });
             this.qboAccounts = res.data.accounts || [];
             this.qboItems = res.data.items || [];
+            this.qboClasses = res.data.classes || []; // Live classes fetched from QBO
         } catch (e) {
             console.error("Failed to load live QBO data", e);
         }
@@ -521,7 +524,7 @@ export default class Amazon {
                         expandedTransactions.push({
                             ...row, type: typeStr, total: amt, quantity: row['quantity'] || 1, description: row['description'] || "",
                             lineItem: lineItemName, category: (this.categoriesDict[lineItemName] || {}).category || "",
-                            uid: Date.now().toString(36) + Math.random().toString(36).substring(2), selected: false, groupClass: 'receipt'
+                            classId: "", uid: Date.now().toString(36) + Math.random().toString(36).substring(2), selected: false, groupClass: 'receipt'
                         });
                     }
                 });
@@ -533,7 +536,7 @@ export default class Amazon {
                         expandedTransactions.push({
                             ...row, type: typeStr, total: amt, quantity: row['quantity'] || 1, description: row['description'] || "",
                             lineItem: lineItemName, category: (this.categoriesDict[lineItemName] || {}).category || "",
-                            uid: Date.now().toString(36) + Math.random().toString(36).substring(2), selected: false, groupClass: 'fee'
+                            classId: "", uid: Date.now().toString(36) + Math.random().toString(36).substring(2), selected: false, groupClass: 'fee'
                         });
                     }
                 });
@@ -550,7 +553,7 @@ export default class Amazon {
                     expandedTransactions.push({
                         ...row, type: typeStr, total: amt, quantity: 1, description: row['description'] || "",
                         lineItem: lineItem, category: (this.categoriesDict[lineItem] || {}).category || "",
-                        uid: Date.now().toString(36) + Math.random().toString(36).substring(2), selected: false, groupClass: 'general'
+                        classId: "", uid: Date.now().toString(36) + Math.random().toString(36).substring(2), selected: false, groupClass: 'general'
                     });
                 }
             }
@@ -653,6 +656,7 @@ export default class Amazon {
                 <th>Transaction Type</th>
                 <th>Line Item</th>
                 <th>Category</th>
+                <th>Class (QBO)</th>
                 <th>Description</th>
                 <th>SKU</th>
                 <th style="text-align: right;">Qty</th>
@@ -664,7 +668,7 @@ export default class Amazon {
         `;
 
         if (currentData.length === 0) {
-            html += `<tr><td colspan="11" style="text-align:center;">No data matches the current filters.</td></tr>`;
+            html += `<tr><td colspan="12" style="text-align:center;">No data matches the current filters.</td></tr>`;
         }
 
         currentData.forEach((t) => {
@@ -677,11 +681,17 @@ export default class Amazon {
                 catDisplay = `<span class="text-danger">Missing</span>`;
             }
 
+            let classDropdown = `<select onchange="window.updateLineClass('${t.uid}', this.value)" style="padding: 0.2rem; max-width: 120px; border-radius: 3px; border: 1px solid #ccc;">
+                <option value="">None</option>
+                ${this.qboClasses.map(c => `<option value="${c.id}" ${t.classId === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
+            </select>`;
+
             html += `<tr>
                 <td><input type="checkbox" class="row-checkbox" data-uid="${t.uid}" ${t.selected ? 'checked' : ''} onchange="window.toggleRow('${t.uid}', this.checked)"></td>
                 <td>${t['type'] || ''}</td>
                 <td><strong>${t.lineItem}</strong></td>
                 <td>${catDisplay}</td>
+                <td>${classDropdown}</td>
                 <td><span style="font-size: 0.8rem; color: #555;">${t.description || ''}</span></td>
                 <td>${t['sku'] || ''}</td>
                 <td style="text-align: right;">${t.quantity || 1}</td>
@@ -709,6 +719,11 @@ export default class Amazon {
             const allChecked = currentData.length > 0 && currentData.every(t => t.selected);
             const selectAllCb = document.getElementById('selectAllCb');
             if (selectAllCb) selectAllCb.checked = allChecked;
+        };
+
+        window.updateLineClass = (uid, classId) => {
+            const masterRow = this.transactions.find(t => t.uid === uid);
+            if (masterRow) masterRow.classId = classId;
         };
 
         window.deleteSelected = () => {
@@ -782,7 +797,6 @@ export default class Amazon {
             if (accInQbo) statusHtml += `<div class="qbo-badge" style="margin-top:3px;">✅ Account in QBO</div>`;
             if (!itemInQbo && !accInQbo) statusHtml = `<span style="color:#e74c3c; font-size:0.8rem;">Unmapped</span>`;
 
-            // Removed isGuest from the disabled check!
             const isDisabled = isFullyMapped;
 
             html += `<tr>
@@ -1013,10 +1027,10 @@ export default class Amazon {
 
                 const individualLines = [];
                 if (amt < 0) {
-                    individualLines.push({ postingType: "Debit", amount: Math.abs(amt), qboAccountId: qboId, description: t.lineItem });
+                    individualLines.push({ postingType: "Debit", amount: Math.abs(amt), qboAccountId: qboId, description: t.lineItem, classId: t.classId || "" });
                     individualLines.push({ postingType: "Credit", amount: Math.abs(amt), qboAccountId: depId, description: "Payout Transfer Offset" });
                 } else {
-                    individualLines.push({ postingType: "Credit", amount: amt, qboAccountId: qboId, description: t.lineItem });
+                    individualLines.push({ postingType: "Credit", amount: amt, qboAccountId: qboId, description: t.lineItem, classId: t.classId || "" });
                     individualLines.push({ postingType: "Debit", amount: amt, qboAccountId: depId, description: "Payout Transfer Offset" });
                 }
 
@@ -1041,8 +1055,10 @@ export default class Amazon {
             visibleData.forEach(t => {
                 if (!t.category) missingCats = true;
                 const amt = this.parseAmt(t.total);
-                const key = t.lineItem || "UNCATEGORIZED"; 
-                if (!summary[key]) summary[key] = { amt: 0, catName: t.category };
+                const classKey = t.classId || "none";
+                const key = (t.lineItem || "UNCATEGORIZED") + "_||_" + classKey; 
+                
+                if (!summary[key]) summary[key] = { amt: 0, catName: t.category, desc: t.lineItem || "UNCATEGORIZED", classId: t.classId };
                 summary[key].amt += amt;
                 netDeposit += amt;
             });
@@ -1061,8 +1077,8 @@ export default class Amazon {
                 if (amt === 0) continue;
 
                 const catResponse = await getOrCreateQboAccount({ accountName: summary[lineKey].catName, realmId: config.realmId });
-                if (amt < 0) linesToPush.push({ postingType: "Debit", amount: Math.abs(amt), qboAccountId: catResponse.data.id, description: lineKey });
-                else linesToPush.push({ postingType: "Credit", amount: amt, qboAccountId: catResponse.data.id, description: lineKey });
+                if (amt < 0) linesToPush.push({ postingType: "Debit", amount: Math.abs(amt), qboAccountId: catResponse.data.id, description: summary[lineKey].desc, classId: summary[lineKey].classId || "" });
+                else linesToPush.push({ postingType: "Credit", amount: amt, qboAccountId: catResponse.data.id, description: summary[lineKey].desc, classId: summary[lineKey].classId || "" });
             }
 
             let summaryDateStr = config.endDate;
@@ -1108,11 +1124,12 @@ export default class Amazon {
                 <div class="table-responsive">
                 <table><thead><tr>
                     <th>Account / Category</th>
+                    <th>Class (QBO)</th>
                     <th style="text-align: right;">Debit</th>
                     <th style="text-align: right;">Credit</th>
                     <th>Line Description</th>
                 </tr></thead><tbody>
-                <tr><td colspan="4" style="text-align:center;">No data matches the current filters.</td></tr>
+                <tr><td colspan="5" style="text-align:center;">No data matches the current filters.</td></tr>
                 </tbody></table></div>`;
             document.getElementById('tabContent').innerHTML = html;
             return;
@@ -1125,6 +1142,7 @@ export default class Amazon {
             html += `
                 <table><thead><tr>
                     <th>Account / Category</th>
+                    <th>Class (QBO)</th>
                     <th style="text-align: right;">Debit</th>
                     <th style="text-align: right;">Credit</th>
                     <th>Line Description</th>
@@ -1138,15 +1156,16 @@ export default class Amazon {
                 const tDate = t['date/time'] ? this.getAmazonDateStr(t['date/time']) : 'Unknown Date';
                 const catRef = t.category || `<span class="text-danger">Missing</span>`;
                 const absAmt = Math.abs(amt).toFixed(2);
+                const className = this.qboClasses.find(c => c.id === t.classId)?.name || `<span style="color:#aaa; font-style:italic;">None</span>`;
 
-                html += `<tr style="background:#e9ecef;"><td colspan="4"><strong>Date: ${tDate}</strong> (Settlement ID: ${t['settlement id'] || 'N/A'})</td></tr>`;
+                html += `<tr style="background:#e9ecef;"><td colspan="5"><strong>Date: ${tDate}</strong> (Settlement ID: ${t['settlement id'] || 'N/A'})</td></tr>`;
 
                 if (amt < 0) {
-                    html += `<tr><td>${catRef}</td><td style="text-align: right;">${absAmt}</td><td></td><td>${t.lineItem}</td></tr>`;
-                    html += `<tr style="background:#f8f9fa;"><td><strong>${depName}</strong></td><td></td><td style="text-align: right;">${absAmt}</td><td>Payout Transfer Offset</td></tr>`;
+                    html += `<tr><td>${catRef}</td><td>${className}</td><td style="text-align: right;">${absAmt}</td><td></td><td>${t.lineItem}</td></tr>`;
+                    html += `<tr style="background:#f8f9fa;"><td><strong>${depName}</strong></td><td></td><td></td><td style="text-align: right;">${absAmt}</td><td>Payout Transfer Offset</td></tr>`;
                 } else {
-                    html += `<tr style="background:#f8f9fa;"><td><strong>${depName}</strong></td><td style="text-align: right;">${absAmt}</td><td></td><td>Payout Transfer Offset</td></tr>`;
-                    html += `<tr><td>${catRef}</td><td></td><td style="text-align: right;">${absAmt}</td><td>${t.lineItem}</td></tr>`;
+                    html += `<tr style="background:#f8f9fa;"><td><strong>${depName}</strong></td><td></td><td style="text-align: right;">${absAmt}</td><td></td><td>Payout Transfer Offset</td></tr>`;
+                    html += `<tr><td>${catRef}</td><td>${className}</td><td></td><td style="text-align: right;">${absAmt}</td><td>${t.lineItem}</td></tr>`;
                 }
             });
 
@@ -1159,8 +1178,17 @@ export default class Amazon {
 
             currentData.forEach(t => {
                 const amt = this.parseAmt(t.total);
-                const key = t.lineItem || "UNCATEGORIZED"; 
-                if (!summary[key]) summary[key] = { amt: 0, catName: t.category || `<span class="text-danger">Missing</span>` };
+                const classKey = t.classId || "none";
+                const key = (t.lineItem || "UNCATEGORIZED") + "_||_" + classKey; 
+                
+                if (!summary[key]) {
+                    summary[key] = { 
+                        amt: 0, 
+                        catName: t.category || `<span class="text-danger">Missing</span>`,
+                        desc: t.lineItem || "UNCATEGORIZED",
+                        className: this.qboClasses.find(c => c.id === t.classId)?.name || `<span style="color:#aaa; font-style:italic;">None</span>`
+                    };
+                }
                 summary[key].amt += amt;
                 netDeposit += amt;
             });
@@ -1181,6 +1209,7 @@ export default class Amazon {
                 <h4 style="margin-top: 0; margin-bottom: 10px; color: #2c3e50;">Journal Entry Date: <span style="font-weight: normal;">${summaryDateStr}</span></h4>
                 <table><thead><tr>
                     <th>Account / Category</th>
+                    <th>Class (QBO)</th>
                     <th style="text-align: right;">Debit</th>
                     <th style="text-align: right;">Credit</th>
                     <th>Line Description</th>
@@ -1189,9 +1218,9 @@ export default class Amazon {
 
             let journalLines = [];
             if (netDeposit > 0) {
-                journalLines.push({ catName: `<strong>${depName}</strong>`, debit: netDeposit, credit: 0, desc: `Total ${this.activeMainTab}`, isDeposit: true });
+                journalLines.push({ catName: `<strong>${depName}</strong>`, className: "", debit: netDeposit, credit: 0, desc: `Total ${this.activeMainTab}`, isDeposit: true });
             } else if (netDeposit < 0) {
-                journalLines.push({ catName: `<strong>${depName}</strong>`, debit: 0, credit: Math.abs(netDeposit), desc: `Total ${this.activeMainTab}`, isDeposit: true });
+                journalLines.push({ catName: `<strong>${depName}</strong>`, className: "", debit: 0, credit: Math.abs(netDeposit), desc: `Total ${this.activeMainTab}`, isDeposit: true });
             }
 
             let totalDebit = netDeposit > 0 ? netDeposit : 0;
@@ -1200,10 +1229,10 @@ export default class Amazon {
             Object.keys(summary).forEach(lineKey => {
                 const amt = summary[lineKey].amt;
                 if (amt < 0) {
-                    journalLines.push({ catName: summary[lineKey].catName, debit: Math.abs(amt), credit: 0, desc: lineKey, isDeposit: false });
+                    journalLines.push({ catName: summary[lineKey].catName, className: summary[lineKey].className, debit: Math.abs(amt), credit: 0, desc: summary[lineKey].desc, isDeposit: false });
                     totalDebit += Math.abs(amt);
                 } else if (amt > 0) {
-                    journalLines.push({ catName: summary[lineKey].catName, debit: 0, credit: amt, desc: lineKey, isDeposit: false });
+                    journalLines.push({ catName: summary[lineKey].catName, className: summary[lineKey].className, debit: 0, credit: amt, desc: summary[lineKey].desc, isDeposit: false });
                     totalCredit += amt;
                 }
             });
@@ -1219,11 +1248,11 @@ export default class Amazon {
             journalLines.forEach(line => {
                 const debitStr = line.debit > 0 ? line.debit.toFixed(2) : "";
                 const creditStr = line.credit > 0 ? line.credit.toFixed(2) : "";
-                html += `<tr><td>${line.catName}</td><td style="text-align: right;">${debitStr}</td><td style="text-align: right;">${creditStr}</td><td>${line.desc}</td></tr>`;
+                html += `<tr><td>${line.catName}</td><td>${line.className || ''}</td><td style="text-align: right;">${debitStr}</td><td style="text-align: right;">${creditStr}</td><td>${line.desc}</td></tr>`;
             });
 
             html += `<tr style="font-weight:bold; background:#e9ecef">
-                <td>TOTAL</td>
+                <td colspan="2">TOTAL</td>
                 <td style="text-align: right;">${totalDebit.toFixed(2)}</td>
                 <td style="text-align: right;">${totalCredit.toFixed(2)}</td>
                 <td></td>
