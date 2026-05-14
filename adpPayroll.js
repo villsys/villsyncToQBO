@@ -241,7 +241,17 @@ export default class AdpPayroll {
             this.qboClasses = res.data.classes || [];
         } catch (e) {
             console.error("Failed to load live QBO data", e);
-            this.showAlert("Could not sync with QBO. Mappings may be inaccurate.", "warning");
+            
+            // Check if the error is related to an expired or revoked token
+            if (e.message && (e.message.includes('token') || e.message.includes('QBO_FETCH_ERROR'))) {
+                this.showAlert("<strong>Connection Revoked:</strong> Your QuickBooks connection has expired or was disconnected. Please click the <strong>Connect to QuickBooks</strong> button again to refresh your access.", "danger");
+                
+                // Optionally disable the push button to prevent failed API calls
+                const pushBtn = document.getElementById('syncQboBtn');
+                if (pushBtn) pushBtn.disabled = true;
+            } else {
+                this.showAlert("Could not sync with QBO. Mappings may be inaccurate.", "warning");
+            }
         }
     }
 
