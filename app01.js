@@ -27,9 +27,12 @@ class UnderDevelopmentView {
 }
 
 const routes = {
-    '#/': () => import('./home.js').then(m => m.default),
-    '#/admin': () => import('./admin.js').then(m => m.default),
+    '#/home': () => import('./home.js').then(m => m.default),
+    '#/amazon': () => import('./amazon.js').then(m => m.default),
     '#/shopify': () => import('./shopify.js').then(m => m.default),
+    '#/adpPayroll': () => import('./adpPayroll.js').then(m => m.default),
+    '#/productCostBuilder': () => import('./productCostBuilder.js').then(m => m.default),
+    '#/bulkDeleteTransaction': () => import('./bulkDeleteTransaction.js').then(m => m.default),
     '#/paypal': () => Promise.resolve(class extends UnderDevelopmentView { constructor() { super("PayPal"); } }),
     '#/bank': () => Promise.resolve(class extends UnderDevelopmentView { constructor() { super("Bank Transactions"); } }),
     '#/creditcard': () => Promise.resolve(class extends UnderDevelopmentView { constructor() { super("Credit Card Transactions"); } })
@@ -52,7 +55,12 @@ async function router() {
         appRoot.innerHTML = `
             <div style="padding: 60px 20px; text-align: center; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin: 20px;">
                 <h2 style="color: #2c3e50; margin-bottom: 15px;">Welcome to VillSync To QBO</h2>
-                <p style="color: #6c757d; font-size: 1.1em;">Please click "Login" in the top right to access your integration modules and connect to QuickBooks.</p>
+                <p style="color: #2c3e50; font-size: 1.15em; font-weight: 500;">
+                    Login with your Gmail account to unlock Guest access.
+                </p>
+                <p style="color: #6c757d; font-size: 1em; margin-top: -10px;">
+                    Experience how VillSync handles complex reconciliations firsthand. No subscription is required to explore the dashboard and integration features.
+                </p>
             </div>
         `;
         return; 
