@@ -1,6 +1,7 @@
+// app.js
 import { auth, provider, db, functions } from './auth.js';
 import { onAuthStateChanged, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js";
-import { collection, getDocs } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+import { collection, getDocs, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-functions.js";
 
 const appRoot = document.getElementById('app-root');
@@ -121,12 +122,16 @@ function renderQboHeader() {
         });
 
         container.innerHTML = `
-            <select id="qboSelect" class="qbo-select">
-                ${optionsHtml}
-            </select>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <select id="qboSelect" class="qbo-select">
+                    ${optionsHtml}
+                </select>
+                <button id="disconnectQboBtn" class="btn" style="background-color: #e74c3c; color: white; padding: 4px 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8rem; height: 100%; display: flex; align-items: center;" title="Disconnect Selected Company">Disconnect</button>
+            </div>
         `;
 
         const qboSelect = document.getElementById('qboSelect');
+        const disconnectBtn = document.getElementById('disconnectQboBtn');
         
         // Auto-select the first valid connection if it exists
         if (activeQboConnections.length > 0) {
@@ -151,7 +156,53 @@ function renderQboHeader() {
         };
         
         qboSelect.addEventListener('change', updateNameDisplay);
+        disconnectBtn.addEventListener('click', handleDisconnectQbo);
         updateNameDisplay(); 
+    }
+}
+
+async function handleDisconnectQbo() {
+    const qboSelect = document.getElementById('qboSelect');
+    if (!qboSelect || qboSelect.value === 'add_new') return;
+
+    const realmId = qboSelect.value;
+    const selectedConn = activeQboConnections.find(c => c.realmId === realmId);
+    
+    if (!selectedConn) return;
+
+    const companyName = selectedConn.companyName || realmId;
+
+    if (!confirm(`Are you sure you want to disconnect "${companyName}"? This will revoke access and remove the connection profile.`)) {
+        return;
+    }
+
+    const btn = document.getElementById('disconnectQboBtn');
+    const originalText = btn.innerText;
+    btn.innerText = "Disconnecting...";
+    btn.disabled = true;
+
+    try {
+        // 1. Try to revoke token via Cloud Function (Backend Intuit cleanup)
+        try {
+            const revokeQboToken = httpsCallable(functions, 'revokeQboToken');
+            await revokeQboToken({ realmId: realmId });
+        } catch (revokeErr) {
+            console.warn("Could not revoke token on Intuit side (it may already be expired), proceeding to delete local profile.", revokeErr);
+        }
+
+        // 2. Delete the connection profile from Firestore
+        await deleteDoc(doc(db, "users", currentUser.uid, "qbo_connections", selectedConn.id));
+
+        alert(`Successfully disconnected ${companyName}.`);
+        
+        // 3. Refresh connections and UI
+        await fetchQboConnections();
+        router();
+    } catch (error) {
+        console.error("Disconnect Error:", error);
+        alert("Failed to disconnect: " + error.message);
+        btn.innerText = originalText;
+        btn.disabled = false;
     }
 }
 
