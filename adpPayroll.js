@@ -167,7 +167,7 @@ export default class AdpPayroll {
                 // Update push button text contextually
                 const syncBtn = document.getElementById('syncQboBtn');
                 if (syncBtn) {
-                    syncBtn.innerText = this.activeSubTab === 'table' ? "Push Checks to QBO" : "Push Journal Entry";
+                    syncBtn.innerText = this.activeSubTab === 'table' ? "Push Employee Entries to QBO" : "Push Journal Entry";
                 }
                 
                 this.renderActiveView();
@@ -1055,9 +1055,9 @@ export default class AdpPayroll {
 
             for (const [dateStr, lines] of Object.entries(groups)) {
                 
-                // BRANCH 1: Push as Individual Checks per Employee
+                // BRANCH 1: Push as Individual Journal Entries per Employee
                 if (this.activeSubTab === 'table') {
-                    const pushCheck = httpsCallable(config.functions, 'pushCheck'); 
+                    const pushJournalEntry = httpsCallable(config.functions, 'pushJournalEntry'); 
                     
                     const empGroups = {};
                     lines.forEach(t => {
@@ -1080,9 +1080,16 @@ export default class AdpPayroll {
                             });
                         }
                         
-                        const response = await pushCheck({ realmId: config.realmId, lines: qboLines, txnDate: dateStr, payeeName: empName, privateNote: `Imported via VilBooks - ADP Payroll Check` });
+                        // Enforce balance check before pushing to QBO to prevent silent QBO rejections
+                        const debits = qboLines.filter(l => l.postingType === 'Debit').reduce((s, l) => s + l.amount, 0);
+                        const credits = qboLines.filter(l => l.postingType === 'Credit').reduce((s, l) => s + l.amount, 0);
+                        if (Math.abs(debits - credits) > 0.05) {
+                            throw new Error(`Payroll entry for ${empName} on ${dateStr} is out of balance (Debits: $${debits.toFixed(2)}, Credits: $${credits.toFixed(2)}).`);
+                        }
+
+                        const response = await pushJournalEntry({ realmId: config.realmId, lines: qboLines, txnDate: dateStr, privateNote: `Imported via VilBooks - ADP Payroll for ${empName}` });
                         if (response.data.success) {
-                            pushedIds.push({ type: "Check", id: response.data.qboResponseId });
+                            pushedIds.push({ type: "JournalEntry", id: response.data.qboResponseId });
                         }
                     }
                 } 
@@ -1132,7 +1139,7 @@ export default class AdpPayroll {
                     timestamp: new Date().toISOString(),
                     realmId: config.realmId,
                     tab: 'Payroll',
-                    view: this.activeSubTab === 'table' ? 'Checks (Data View)' : 'Journal Summary',
+                    view: this.activeSubTab === 'table' ? 'Employee Entries (Data View)' : 'Journal Summary',
                     qboIds: pushedIds,
                     pushedBy: currentUser.email
                 });
@@ -1145,7 +1152,7 @@ export default class AdpPayroll {
                     this.updateReadyStatus(); 
                 }
                 
-                const entryType = this.activeSubTab === 'table' ? "Checks" : "Journal Entries";
+                const entryType = this.activeSubTab === 'table' ? "Employee Journal Entries" : "Journal Entries";
                 if (statusText) statusText.innerText = `Push completed successfully! ${pushedIds.length} ${entryType} saved to QBO.`;
                 this.showAlert(`Success! ${pushedIds.length} ${entryType} were pushed to QuickBooks.`, "success");
             }
