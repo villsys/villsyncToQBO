@@ -241,17 +241,7 @@ export default class AdpPayroll {
             this.qboClasses = res.data.classes || [];
         } catch (e) {
             console.error("Failed to load live QBO data", e);
-            
-            // Check if the error is related to an expired or revoked token
-            if (e.message && (e.message.includes('token') || e.message.includes('QBO_FETCH_ERROR'))) {
-                this.showAlert("<strong>Connection Revoked:</strong> Your QuickBooks connection has expired or was disconnected. Please click the <strong>Connect to QuickBooks</strong> button again to refresh your access.", "danger");
-                
-                // Optionally disable the push button to prevent failed API calls
-                const pushBtn = document.getElementById('syncQboBtn');
-                if (pushBtn) pushBtn.disabled = true;
-            } else {
-                this.showAlert("Could not sync with QBO. Mappings may be inaccurate.", "warning");
-            }
+            this.showAlert("Could not sync with QBO. Mappings may be inaccurate.", "warning");
         }
     }
 
@@ -800,14 +790,18 @@ export default class AdpPayroll {
         let i = 0;
 
         uniqueLineItems.forEach(lineItem => {
-            const accMatch = this.qboAccounts.find(acc => acc.name.toLowerCase() === lineItem.toLowerCase());
+            // Retrieve mapped category if exists, else fallback to raw lineItem
+            const mappedCat = (this.categoriesDict[lineItem] || {}).category;
+            const searchName = mappedCat || lineItem;
+
+            const accMatch = this.qboAccounts.find(acc => acc.name.toLowerCase() === searchName.toLowerCase());
             const accInQbo = !!accMatch;
 
             let accDropdownHtml = `<select id="unmap-cat-${i}" style="padding:0.4rem; width:100%; box-sizing: border-box;" onchange="window.toggleNewAccountInput(${i}, this.value)">`;
             accDropdownHtml += `<option value="">Select Existing QBO Account...</option>`;
             accDropdownHtml += `<option value="ADD_NEW" style="font-weight:bold; color:var(--btn-bg);">+ Create New Account</option>`;
             this.qboAccounts.forEach(acc => {
-                const selected = accInQbo && acc.id === accMatch.id ? 'selected' : '';
+                const selected = accInQbo && accMatch && acc.id === accMatch.id ? 'selected' : '';
                 accDropdownHtml += `<option value="${acc.id}" data-name="${acc.name}" data-type="${acc.type}" ${selected}>${acc.name} (${acc.type})</option>`;
             });
             accDropdownHtml += `</select>`;
@@ -827,7 +821,7 @@ export default class AdpPayroll {
             typeDropdownHtml += `</select>`;
 
             let statusHtml = '';
-            if (accInQbo) statusHtml += `<div class="qbo-badge">✅ Account in QBO</div>`;
+            if (accInQbo) statusHtml += `<div class="qbo-badge">✅ Mapped to QBO</div>`;
             if (!accInQbo) statusHtml = `<span style="color:#e74c3c; font-size:0.8rem;">Unmapped</span>`;
 
             const isDisabled = accInQbo;
@@ -899,8 +893,16 @@ export default class AdpPayroll {
                     });
                 }
 
-                this.showAlert(`Successfully synced "${lineItem}" with QuickBooks!`, "success");
+                // IMPORTANT FIX: Save mapping directly to Firestore so the system remembers it
+                await setDoc(doc(db, `qbo_companies/${realmId}/category_mappings`, lineItem), {
+                    category: finalAccName,
+                    accountType: accTypeVal
+                }, { merge: true });
+
+                this.showAlert(`Successfully mapped "${lineItem}" to QuickBooks!`, "success");
                 
+                // Refresh local maps and live QBO data
+                await this.loadCategories(); 
                 await this.loadLiveQboData();
                 this.renderActiveView(); 
 
